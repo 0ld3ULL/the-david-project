@@ -151,6 +151,8 @@ class ClawdbotSystem:
         """Execute an approved action through the appropriate tool."""
         try:
             if action_type in ("tweet", "thread", "reply"):
+                # Ensure action type is in the data for the Twitter tool
+                action_data["action"] = action_type
                 result = await self.twitter.execute(action_data)
                 if "error" in result:
                     return f"Twitter error: {result['error']}"
