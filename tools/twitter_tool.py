@@ -17,6 +17,7 @@ class TwitterTool:
 
     def __init__(self):
         self._client = None
+        self._read_client = None  # Bearer token client for read operations
         self._api = None  # v1.1 API for media upload
 
     def _ensure_client(self):
@@ -32,7 +33,7 @@ class TwitterTool:
         if not all([consumer_key, consumer_secret, access_token, access_secret]):
             raise RuntimeError("Twitter API credentials not configured in .env")
 
-        # v2 client for posting
+        # v2 client for posting (OAuth 1.0a User Context)
         self._client = tweepy.Client(
             consumer_key=consumer_key,
             consumer_secret=consumer_secret,
@@ -46,6 +47,18 @@ class TwitterTool:
             access_token, access_secret,
         )
         self._api = tweepy.API(auth)
+
+    def _ensure_read_client(self):
+        """Initialize bearer token client for read operations (search, etc)."""
+        if self._read_client is not None:
+            return
+
+        bearer_token = os.environ.get("TWITTER_BEARER_TOKEN", "")
+        if not bearer_token:
+            raise RuntimeError("TWITTER_BEARER_TOKEN not configured in .env")
+
+        # Bearer token client for read-only operations
+        self._read_client = tweepy.Client(bearer_token=bearer_token)
 
     # --- Draft methods (for approval queue) ---
 
@@ -196,17 +209,18 @@ class TwitterTool:
         Get recent mentions using search (workaround for API tier limits).
 
         The mentions endpoint requires Basic tier ($100+/month).
-        Search works on lower tiers and pay-per-use.
+        Search with bearer token works on pay-per-use tier.
         """
         self._ensure_client()
+        self._ensure_read_client()
         try:
             # Get our username
             me = self._client.get_me()
             username = me.data.username
 
             # Search for tweets mentioning us (last 7 days)
-            # This works on lower API tiers unlike get_users_mentions
-            results = self._client.search_recent_tweets(
+            # Use bearer token client for search
+            results = self._read_client.search_recent_tweets(
                 query=f"@{username} -is:retweet",
                 max_results=min(count, 100),
                 tweet_fields=["created_at", "author_id", "text", "conversation_id", "in_reply_to_user_id"],
@@ -249,10 +263,10 @@ class TwitterTool:
 
     def get_replies_to_tweet(self, tweet_id: str, count: int = 20) -> list[dict]:
         """Get replies to a specific tweet (for monitoring comments on David's posts)."""
-        self._ensure_client()
+        self._ensure_read_client()
         try:
-            # Search for replies to a specific conversation
-            results = self._client.search_recent_tweets(
+            # Search for replies to a specific conversation (using bearer token)
+            results = self._read_client.search_recent_tweets(
                 query=f"conversation_id:{tweet_id} -is:retweet",
                 max_results=min(count, 100),
                 tweet_fields=["created_at", "author_id", "text", "in_reply_to_user_id"],
@@ -298,11 +312,13 @@ class TwitterTool:
     def get_my_recent_tweets(self, count: int = 10) -> list[dict]:
         """Get David's recent tweets (to monitor for replies)."""
         self._ensure_client()
+        self._ensure_read_client()
         try:
             me = self._client.get_me()
             user_id = me.data.id
 
-            tweets = self._client.get_users_tweets(
+            # Use bearer token for read operations
+            tweets = self._read_client.get_users_tweets(
                 id=user_id,
                 max_results=min(count, 100),
                 tweet_fields=["created_at", "public_metrics", "conversation_id"],
