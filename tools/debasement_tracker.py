@@ -204,7 +204,7 @@ class DebasementTracker:
         if m2_data.get("year_change_pct"):
             report["impact_on_savings"] = self.calculate_purchasing_power_loss(
                 m2_data["year_change_pct"],
-                your_savings=10000,
+                your_savings=100000,
             )
 
         return report
