@@ -1046,31 +1046,38 @@ class TelegramBot:
 
     async def _execute_approved(self, approval_id: int):
         """Execute an approved action."""
+        logger.info(f"Executing approved action #{approval_id}")
+
         approval = self.queue.get_by_id(approval_id)
         if not approval:
+            logger.error(f"Approval #{approval_id} not found")
             return
 
         action_type = approval["action_type"]
         action_data = json.loads(approval["action_data"])
+        logger.info(f"Action type: {action_type}, data: {action_data}")
 
         # Route to appropriate tool executor
-        # (This will be connected to actual tool implementations)
         try:
             if self.on_command:
+                logger.info(f"Calling on_command for execute_{action_type}")
                 result = await self.on_command(
                     f"execute_{action_type}", json.dumps(action_data)
                 )
+                logger.info(f"Execution result: {result}")
                 self.queue.mark_executed(approval_id)
                 await self.app.bot.send_message(
                     chat_id=self.operator_id,
                     text=f"Executed #{approval_id}: {result}",
                 )
             else:
+                logger.warning("on_command not set")
                 await self.app.bot.send_message(
                     chat_id=self.operator_id,
                     text=f"#{approval_id} approved but no executor connected.",
                 )
         except Exception as e:
+            logger.error(f"Execution failed: {e}", exc_info=True)
             self.audit.log(
                 approval.get("project_id", "unknown"), "reject",
                 "execution", f"Failed to execute #{approval_id}: {e}",

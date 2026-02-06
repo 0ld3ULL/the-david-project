@@ -126,6 +126,40 @@ Core listing system, categories, multi-image galleries, search/filters, product 
 
 ---
 
+## Infrastructure & Servers
+
+### David's VPS (Hetzner)
+| Property | Value |
+|----------|-------|
+| IP Address | `89.167.24.222` |
+| Provider | Hetzner |
+| Specs | CPX42 - 8 vCPU, 16GB RAM |
+| Location | Helsinki |
+| Cost | ~$27/month |
+| OS | Ubuntu 24.04 |
+| Python | 3.12 |
+| Service | `systemctl status david-flip` |
+| Code Location | `/opt/david-flip/` |
+| Logs | `journalctl -u david-flip -f` |
+
+**SSH Access:** `ssh root@89.167.24.222`
+
+**Restart David:** `ssh root@89.167.24.222 "systemctl restart david-flip"`
+
+**Pull Updates:** `ssh root@89.167.24.222 "cd /opt/david-flip && git pull && systemctl restart david-flip"`
+
+### flipt.ai Website (on Amphitheatre VPS)
+| Property | Value |
+|----------|-------|
+| URL | https://flipt.ai |
+| IP Address | `135.181.88.155` (same as playaverse.org) |
+| Web Root | `/var/www/flipt/` |
+| Pages | index.html, terms.html, privacy.html |
+
+**Deploy changes:** `scp file.html root@135.181.88.155:/var/www/flipt/`
+
+---
+
 ## Hardware & Network Setup
 
 - **Agent laptop:** Standalone Windows laptop (dedicated, isolated)
@@ -296,9 +330,17 @@ A test video was accidentally posted to the wrong channel and had to be deleted.
 4. Consider adding channel verification before upload
 
 ### David Flip Accounts:
-- **Twitter/X:** @David_Flipt
-- **YouTube:** David Flip channel (Brand Account under main Google) - Channel ID: UCBNP7tMEMf21Ks2RmnblQDw
-- **Google Cloud Project:** ALICE (project ID: alice-481208) - has YouTube Data API v3 enabled
+| Platform | Handle/ID | Status |
+|----------|-----------|--------|
+| Twitter/X | @David_Flipt | Configured, API working |
+| YouTube | Channel ID: UCBNP7tMEMf21Ks2RmnblQDw | OAuth fixed, verified |
+| Telegram Bot | @DavidFliptBot (token in .env) | Running 24/7 on VPS |
+| Email | davidflip25@proton.me | Active |
+| Website | https://flipt.ai | Live |
+
+**Twitter API:** Pay-per-use plan, $24.97 credits, keys in VPS .env
+**Google Cloud Project:** ALICE (project ID: alice-481208) - YouTube Data API v3 enabled
+**Twitter Developer App:** "DavidAI" - console.x.com
 
 ### Content Safety Notes (User in UAE):
 - No specific government targeting
@@ -461,8 +503,21 @@ Goal: David can appear on video podcasts, do live interviews, attend virtual eve
 
 ---
 
-## Next Steps
-1. **Fix YouTube OAuth** - Delete token, re-auth with David Flip account only
-2. **Add channel verification** - Check channel name before uploading
-3. **Fix Telegram button timeout** - Buttons not appearing after video upload
-4. **Test full flow** - /video → preview → approve → post to Twitter + YouTube
+## Current Status (February 6, 2026)
+
+### COMPLETED:
+- [x] YouTube OAuth fixed - verified correct channel (UCBNP7tMEMf21Ks2RmnblQDw)
+- [x] Channel verification added to youtube_tool.py - blocks upload to wrong channel
+- [x] Telegram button timeout fixed - buttons now attach to video message
+- [x] VPS set up - David running 24/7 on 89.167.24.222
+- [x] Worldview integrated into personality layer (Oracle archetype, brevity, prompt injection defense)
+- [x] Terms/Privacy pages created for flipt.ai
+
+### IN PROGRESS:
+- [ ] Twitter API setup - checking app permissions for mentions access
+
+### NEXT STEPS:
+1. **Fix Twitter app permissions** - Change to "Web App, Automated App or Bot" type
+2. **Build Twitter monitoring** - Watch mentions, comments on David's posts
+3. **Build Twitter reply flow** - Draft replies → Telegram approval → Post
+4. **Test full Twitter flow** - /tweet → preview → approve → post
