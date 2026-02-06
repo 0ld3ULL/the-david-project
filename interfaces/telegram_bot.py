@@ -84,6 +84,9 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("david", self.cmd_david_tweet))
         self.app.add_handler(CommandHandler("mentions", self.cmd_mentions))
         self.app.add_handler(CommandHandler("reply", self.cmd_reply))
+        self.app.add_handler(CommandHandler("news", self.cmd_news))
+        self.app.add_handler(CommandHandler("debasement", self.cmd_debasement))
+        self.app.add_handler(CommandHandler("davidnews", self.cmd_david_news))
         self.app.add_handler(CommandHandler("video", self.cmd_video))
         self.app.add_handler(CommandHandler("schedule", self.cmd_schedule))
         self.app.add_handler(CommandHandler("help", self.cmd_help))
@@ -109,6 +112,8 @@ class TelegramBot:
             BotCommand("david", "Have David write a tweet"),
             BotCommand("mentions", "Check for mentions"),
             BotCommand("reply", "Reply to a tweet"),
+            BotCommand("news", "Get news digest for David"),
+            BotCommand("debasement", "Money printing report"),
             BotCommand("video", "Generate a David Flip video"),
             BotCommand("schedule", "Show scheduled posts"),
             BotCommand("help", "Show all commands"),
@@ -153,6 +158,10 @@ class TelegramBot:
             "/david <topic> - David writes tweet\n"
             "/mentions - Check for mentions\n"
             "/reply <id> <text> - Reply to tweet\n\n"
+            "**Research:**\n"
+            "/news - Get news digest\n"
+            "/davidnews <#> - David comments on story\n"
+            "/debasement - Money printing report\n\n"
             "**Content:**\n"
             "/video - Generate video\n"
             "/schedule - Show scheduled posts\n\n"
@@ -244,6 +253,115 @@ class TelegramBot:
 
         approval = self.queue.get_by_id(approval_id)
         await self._send_approval_card(update.effective_chat.id, approval)
+
+    async def cmd_news(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Get news digest for David's topics."""
+        if not self._is_operator(update):
+            return
+
+        await update.message.reply_text("Fetching news from David's sources...")
+
+        try:
+            from tools.news_monitor import NewsMonitor
+            monitor = NewsMonitor()
+            items = await monitor.get_daily_digest(max_items=10)
+
+            if not items:
+                await update.message.reply_text("No relevant news found in the last 24 hours.")
+                return
+
+            # Store items for davidnews command
+            context.user_data["news_items"] = items
+
+            text = monitor.format_digest_for_telegram(items)
+            await update.message.reply_text(text, parse_mode="Markdown")
+
+        except Exception as e:
+            await update.message.reply_text(f"Error fetching news: {e}")
+
+    async def cmd_debasement(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Get money printing / debasement report."""
+        if not self._is_operator(update):
+            return
+
+        await update.message.reply_text("Fetching debasement data from FRED...")
+
+        try:
+            from tools.debasement_tracker import DebasementTracker
+            tracker = DebasementTracker()
+            report = await tracker.generate_debasement_report()
+
+            # Format for display
+            text = tracker.format_for_david(report)
+            await update.message.reply_text(text, parse_mode="Markdown")
+
+            # Offer to have David comment
+            if not report.get("m2_money_supply", {}).get("error"):
+                await update.message.reply_text(
+                    "Want David to tweet about this?\n"
+                    "Reply: `/david debasement report`",
+                    parse_mode="Markdown"
+                )
+
+                # Store report for david command
+                context.user_data["debasement_report"] = report
+
+        except Exception as e:
+            await update.message.reply_text(f"Error: {e}")
+
+    async def cmd_david_news(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Have David comment on a news item from the digest."""
+        if not self._is_operator(update):
+            return
+
+        if not context.args:
+            await update.message.reply_text("Usage: /davidnews <number from /news>")
+            return
+
+        try:
+            item_num = int(context.args[0]) - 1
+            news_items = context.user_data.get("news_items", [])
+
+            if not news_items:
+                await update.message.reply_text("Run /news first to get the digest.")
+                return
+
+            if item_num < 0 or item_num >= len(news_items):
+                await update.message.reply_text(f"Invalid number. Pick 1-{len(news_items)}")
+                return
+
+            item = news_items[item_num]
+            await update.message.reply_text(
+                f"David is composing a take on:\n**{item.title}**",
+                parse_mode="Markdown"
+            )
+
+            # Generate David's take
+            from tools.news_monitor import NewsMonitor
+            monitor = NewsMonitor()
+            prompt = monitor.generate_david_prompt(item)
+
+            if self.on_command:
+                response = await self.on_command("generate_tweet", prompt)
+
+                # Submit to approval queue
+                approval_id = self.queue.submit(
+                    project_id="david-flip",
+                    agent_id="david-news",
+                    action_type="tweet",
+                    action_data={"text": response},
+                    context_summary=f"David's take on: {item.title[:50]}",
+                )
+
+                approval = self.queue.get_by_id(approval_id)
+                await self._send_approval_card(update.effective_chat.id, approval)
+            else:
+                await update.message.reply_text("Agent engine not connected.")
+
+        except ValueError:
+            await update.message.reply_text("Please provide a number.")
+        except Exception as e:
+            await update.message.reply_text(f"Error: {e}")
 
     async def cmd_david_tweet(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Have David generate a tweet about a topic."""

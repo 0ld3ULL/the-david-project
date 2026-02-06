@@ -128,17 +128,25 @@ class ClawdbotSystem:
         )
 
         system_prompt = self.personality.get_system_prompt("twitter")
-        task = (
-            f"Write a single tweet about: {topic}\n\n"
-            "Rules:\n"
-            "- Maximum 280 characters\n"
-            "- Stay in character as David Flip\n"
-            "- Be concise, slightly aloof (Musk-style)\n"
-            "- Don't use hashtags excessively (1-2 max if any)\n"
-            "- Don't start with 'I' too often\n"
-            "- Focus on the message, not engagement-baiting\n\n"
-            "Return ONLY the tweet text, nothing else."
-        )
+
+        # Check if this is already a formatted prompt (from news/debasement)
+        if "Write a tweet" in topic or "HEADLINE:" in topic or "DATA:" in topic:
+            # Already formatted, use directly
+            task = topic + "\n\nReturn ONLY the tweet text, nothing else."
+        else:
+            # Simple topic, add standard formatting
+            task = (
+                f"Write a single tweet about: {topic}\n\n"
+                "Rules:\n"
+                "- Maximum 280 characters\n"
+                "- Stay in character as David Flip\n"
+                "- Be concise, slightly aloof (Musk-style)\n"
+                "- Don't use hashtags excessively (1-2 max if any)\n"
+                "- Don't start with 'I' too often\n"
+                "- Focus on the message, not engagement-baiting\n"
+                "- Connect to giving power back to regular people\n\n"
+                "Return ONLY the tweet text, nothing else."
+            )
 
         response = await self.engine.run(
             context=context,
