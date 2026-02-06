@@ -668,9 +668,15 @@ class TelegramBot:
                 # Use stored observation, or pick new if not available
                 observation = report.get("observation", random.choice(DAVID_DEBASEMENT_OBSERVATIONS))
 
+                week_change = m2.get("week_change", 0)
+                week_pct = m2.get("week_change_pct", 0)
+                m2_value = m2.get("latest_value", 0)
+
                 tweet = (
-                    f"Money supply up {year_pct:.1f}% in the last 12 months.\n\n"
-                    f"$100k in savings lost ${loss:,.0f} in purchasing power.\n\n"
+                    f"📊 M2 Money Supply: ${m2_value:,.0f}B\n"
+                    f"Week: +${week_change:,.0f}B ({week_pct:+.2f}%)\n"
+                    f"Last 12 months: {year_pct:+.1f}%\n\n"
+                    f"💸 $100k in savings lost ${loss:,.0f} in purchasing power.\n\n"
                     f"{observation}"
                 )
 
