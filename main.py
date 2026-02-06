@@ -108,11 +108,52 @@ class ClawdbotSystem:
             action_data = json.loads(args)
             return await self._execute_action(action_type, action_data)
 
+        # Generate tweet with David's personality
+        if command == "generate_tweet":
+            return await self._generate_david_tweet(args)
+
         # Agent-generated response (user message)
         if command == "message":
             return await self._agent_respond(args)
 
         return f"Unknown command: {command}"
+
+    async def _generate_david_tweet(self, topic: str) -> str:
+        """Generate a tweet using David's personality."""
+        context = AgentContext(
+            project_id="david-flip",
+            session_id="tweet-generation",
+            agent_id="david-flip-twitter",
+            task_type="content_generation",
+        )
+
+        system_prompt = self.personality.get_system_prompt("twitter")
+        task = (
+            f"Write a single tweet about: {topic}\n\n"
+            "Rules:\n"
+            "- Maximum 280 characters\n"
+            "- Stay in character as David Flip\n"
+            "- Be concise, slightly aloof (Musk-style)\n"
+            "- Don't use hashtags excessively (1-2 max if any)\n"
+            "- Don't start with 'I' too often\n"
+            "- Focus on the message, not engagement-baiting\n\n"
+            "Return ONLY the tweet text, nothing else."
+        )
+
+        response = await self.engine.run(
+            context=context,
+            task=task,
+            system_prompt=system_prompt,
+        )
+
+        # Clean up any quotes or extra formatting
+        tweet = response.strip().strip('"').strip("'")
+
+        # Validate character count
+        if len(tweet) > 280:
+            tweet = tweet[:277] + "..."
+
+        return tweet
 
     async def _agent_respond(self, user_message: str) -> str:
         """Generate a David Flip response via the agent engine."""

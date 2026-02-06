@@ -213,6 +213,10 @@ class ApprovalQueue:
             target = action_data.get("target", "?")
             text = action_data.get("text", "")
             return f'WhatsApp to {target}: "{text}"'
+        elif action_type == "reply":
+            tweet_id = action_data.get("tweet_id", "?")
+            text = action_data.get("text", "")
+            return f'Reply to {tweet_id}:\n"{text}"'
         elif action_type == "video_create":
             script = action_data.get("script", "")
             return f'Video script: "{script[:200]}..."'

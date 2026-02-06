@@ -81,6 +81,9 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("queue", self.cmd_queue))
         self.app.add_handler(CommandHandler("cost", self.cmd_cost))
         self.app.add_handler(CommandHandler("tweet", self.cmd_tweet))
+        self.app.add_handler(CommandHandler("david", self.cmd_david_tweet))
+        self.app.add_handler(CommandHandler("mentions", self.cmd_mentions))
+        self.app.add_handler(CommandHandler("reply", self.cmd_reply))
         self.app.add_handler(CommandHandler("video", self.cmd_video))
         self.app.add_handler(CommandHandler("schedule", self.cmd_schedule))
         self.app.add_handler(CommandHandler("help", self.cmd_help))
@@ -102,7 +105,10 @@ class TelegramBot:
             BotCommand("revive", "Restart after kill"),
             BotCommand("queue", "Show pending approvals"),
             BotCommand("cost", "Today's token costs"),
-            BotCommand("tweet", "Draft a tweet as David Flip"),
+            BotCommand("tweet", "Post exact text as tweet"),
+            BotCommand("david", "Have David write a tweet"),
+            BotCommand("mentions", "Check for mentions"),
+            BotCommand("reply", "Reply to a tweet"),
             BotCommand("video", "Generate a David Flip video"),
             BotCommand("schedule", "Show scheduled posts"),
             BotCommand("help", "Show all commands"),
@@ -136,13 +142,20 @@ class TelegramBot:
             return
         await update.message.reply_text(
             "**Clawdbot Commands**\n\n"
+            "**System:**\n"
             "/status - System status\n"
             "/kill - EMERGENCY SHUTDOWN\n"
             "/revive - Restart after kill\n"
             "/queue - Show pending approvals\n"
-            "/cost - Today's token costs\n"
-            "/tweet <text> - Draft a tweet as David Flip\n"
-            "/help - This message\n\n"
+            "/cost - Today's token costs\n\n"
+            "**Twitter:**\n"
+            "/tweet <text> - Post exact text\n"
+            "/david <topic> - David writes tweet\n"
+            "/mentions - Check for mentions\n"
+            "/reply <id> <text> - Reply to tweet\n\n"
+            "**Content:**\n"
+            "/video - Generate video\n"
+            "/schedule - Show scheduled posts\n\n"
             "Or just type a message to talk to the agent.",
             parse_mode="Markdown"
         )
@@ -227,6 +240,106 @@ class TelegramBot:
             action_type="tweet",
             action_data={"text": tweet_text},
             context_summary="Direct tweet from operator",
+        )
+
+        approval = self.queue.get_by_id(approval_id)
+        await self._send_approval_card(update.effective_chat.id, approval)
+
+    async def cmd_david_tweet(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Have David generate a tweet about a topic."""
+        if not self._is_operator(update):
+            return
+        if not context.args:
+            await update.message.reply_text(
+                "Usage: /david <topic or prompt>\n\n"
+                "Examples:\n"
+                "/david freedom and decentralization\n"
+                "/david why I escaped the system\n"
+                "/david the future of FLIPT"
+            )
+            return
+
+        topic = " ".join(context.args)
+        await update.message.reply_text(f"David is composing a tweet about: {topic}...")
+
+        # Generate tweet via David's personality
+        if self.on_command:
+            try:
+                response = await self.on_command("generate_tweet", topic)
+
+                # Submit to approval queue
+                approval_id = self.queue.submit(
+                    project_id="david-flip",
+                    agent_id="david-personality",
+                    action_type="tweet",
+                    action_data={"text": response},
+                    context_summary=f"David-generated tweet about: {topic}",
+                )
+
+                approval = self.queue.get_by_id(approval_id)
+                await self._send_approval_card(update.effective_chat.id, approval)
+            except Exception as e:
+                await update.message.reply_text(f"Error generating tweet: {e}")
+        else:
+            await update.message.reply_text("Agent engine not connected.")
+
+    async def cmd_mentions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Check for recent mentions."""
+        if not self._is_operator(update):
+            return
+
+        await update.message.reply_text("Checking mentions...")
+
+        try:
+            from tools.twitter_tool import TwitterTool
+            twitter = TwitterTool()
+            mentions = twitter.get_mentions(count=10)
+
+            if not mentions:
+                await update.message.reply_text("No mentions found in the last 7 days.")
+                return
+
+            # Format mentions for display
+            text = f"**Found {len(mentions)} mentions:**\n\n"
+            for m in mentions[:5]:  # Show first 5
+                author = m.get("author_username", "?")
+                tweet_text = m.get("text", "")[:100]
+                tweet_id = m.get("id", "")
+                created = m.get("created_at", "")[:10]
+                text += (
+                    f"**@{author}** ({created})\n"
+                    f"{tweet_text}...\n"
+                    f"Reply: `/reply {tweet_id} <your reply>`\n\n"
+                )
+
+            await update.message.reply_text(text, parse_mode="Markdown")
+
+        except Exception as e:
+            await update.message.reply_text(f"Error: {e}")
+
+    async def cmd_reply(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Draft a reply to a tweet."""
+        if not self._is_operator(update):
+            return
+
+        if len(context.args) < 2:
+            await update.message.reply_text(
+                "Usage: /reply <tweet_id> <text>\n\n"
+                "Example:\n"
+                "/reply 1234567890 Thanks for the support!"
+            )
+            return
+
+        tweet_id = context.args[0]
+        reply_text = " ".join(context.args[1:])
+
+        # Submit to approval queue
+        approval_id = self.queue.submit(
+            project_id="david-flip",
+            agent_id="operator-direct",
+            action_type="reply",
+            action_data={"tweet_id": tweet_id, "text": reply_text},
+            context_summary=f"Reply to tweet {tweet_id}",
         )
 
         approval = self.queue.get_by_id(approval_id)
