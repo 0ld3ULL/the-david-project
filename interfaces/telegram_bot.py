@@ -673,11 +673,11 @@ class TelegramBot:
                 m2_value = m2.get("latest_value", 0)
 
                 tweet = (
-                    f"📊 M2 Money Supply: ${m2_value:,.0f}B\n"
-                    f"Week: +${week_change:,.0f}B ({week_pct:+.2f}%)\n"
-                    f"Last 12 months: {year_pct:+.1f}%\n\n"
-                    f"💸 $100k in savings lost ${loss:,.0f} in purchasing power.\n\n"
-                    f"{observation}"
+                    f"${loss:,.0f}.\n\n"
+                    f"That's what $100k in savings lost to money printing in the last 12 months.\n\n"
+                    f"📊 M2 Money Supply: ${m2_value:,.0f}B (+{year_pct:.1f}% YoY)\n\n"
+                    f"{observation}\n\n"
+                    f"Source: FRED"
                 )
 
                 # Submit to approval queue
