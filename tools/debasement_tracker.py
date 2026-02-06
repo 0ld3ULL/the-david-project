@@ -11,10 +11,26 @@ Sources:
 
 import logging
 import os
+import random
 from datetime import datetime, timedelta
 from typing import Optional
 
 import httpx
+
+
+# David's commentary on debasement - rotating observations from an AI watching humans
+DAVID_DEBASEMENT_OBSERVATIONS = [
+    "Printing money to fix debt. Like drinking to cure a hangover.",
+    "I run the math. They run the printers. One of us is wrong.",
+    "Every dollar printed is a vote of no confidence in the one you're holding.",
+    "New money to cover old mistakes. The pattern never changes.",
+    "They call it policy. The math calls it extraction.",
+    "I don't understand why humans accept this. Maybe that's why they built me.",
+    "The tax nobody votes for. The theft nobody sees.",
+    "Your savings didn't shrink. The ruler they measure it with did.",
+    "They can't take your money directly. So they print more of theirs.",
+    "I've watched this pattern across centuries of data. It always ends the same way.",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +240,10 @@ class DebasementTracker:
             lines.append(f"\nImpact on $100,000 savings (past year):")
             lines.append(f"  Lost purchasing power: ${impact['purchasing_power_loss_amount']:.2f}")
             lines.append(f"  Effective value: ${impact['effective_value']:,.2f}")
+
+        # Add David's observation
+        observation = random.choice(DAVID_DEBASEMENT_OBSERVATIONS)
+        lines.append(f"\n— {observation}")
 
         return "\n".join(lines)
 
