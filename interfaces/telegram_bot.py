@@ -96,7 +96,7 @@ class TelegramBot:
             self.handle_approval_callback, pattern=r"^(approve|reject|edit|postnow|posttwitter|postyoutube|postboth|schedule|scheduleat)_"
         ))
 
-        # David action callbacks (post_debasement, etc.)
+        # David action callbacks (post_debasement, post_debasement_chart, etc.)
         self.app.add_handler(CallbackQueryHandler(
             self.handle_david_callback, pattern=r"^post_debasement"
         ))
@@ -300,16 +300,34 @@ class TelegramBot:
             text = tracker.format_for_david(report)
             await update.message.reply_text(text, parse_mode="Markdown")
 
-            # Offer to post with a button
+            # Generate chart image
+            chart_path = None
             if not report.get("m2_money_supply", {}).get("error"):
-                # Store report for callback - observation is already in the formatted text
+                try:
+                    from tools.chart_generator import generate_debasement_chart
+                    chart_path = generate_debasement_chart(report["m2_money_supply"])
+                    if chart_path:
+                        # Send chart preview
+                        with open(chart_path, 'rb') as chart_file:
+                            await update.message.reply_photo(
+                                photo=chart_file,
+                                caption="Chart preview for tweet"
+                            )
+                except Exception as e:
+                    logger.warning(f"Chart generation failed: {e}")
+
+                # Store report and chart path for callback
                 context.user_data["debasement_report"] = report
+                context.user_data["debasement_chart"] = chart_path
 
                 keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Post", callback_data="post_debasement")]
+                    [
+                        InlineKeyboardButton("Review (with chart)", callback_data="post_debasement_chart"),
+                        InlineKeyboardButton("Review (text only)", callback_data="post_debasement"),
+                    ]
                 ])
                 await update.message.reply_text(
-                    "Post this?",
+                    "Post with or without chart?",
                     reply_markup=keyboard
                 )
 
@@ -646,8 +664,9 @@ class TelegramBot:
             return
 
         action = query.data
+        include_chart = action == "post_debasement_chart"
 
-        if action == "post_debasement":
+        if action in ("post_debasement", "post_debasement_chart"):
             try:
                 # Get stored report
                 report = context.user_data.get("debasement_report")
@@ -668,8 +687,6 @@ class TelegramBot:
                 # Use stored observation, or pick new if not available
                 observation = report.get("observation", random.choice(DAVID_DEBASEMENT_OBSERVATIONS))
 
-                week_change = m2.get("week_change", 0)
-                week_pct = m2.get("week_change_pct", 0)
                 m2_value = m2.get("latest_value", 0)
 
                 tweet = (
@@ -680,16 +697,25 @@ class TelegramBot:
                     f"Source: FRED"
                 )
 
+                # Get chart path if requested
+                chart_path = None
+                if include_chart:
+                    chart_path = context.user_data.get("debasement_chart")
+
                 # Submit to approval queue
+                action_data = {"text": tweet}
+                if chart_path:
+                    action_data["media_path"] = chart_path
+
                 approval_id = self.queue.submit(
                     project_id="david-flip",
                     agent_id="david-debasement",
                     action_type="tweet",
-                    action_data={"text": tweet},
-                    context_summary="Debasement report tweet",
+                    action_data=action_data,
+                    context_summary=f"Debasement report tweet {'with chart' if include_chart else '(text only)'}",
                 )
 
-                await query.edit_message_text("Tweet ready for approval.")
+                await query.edit_message_text(f"Tweet ready for approval {'(with chart)' if include_chart else '(text only)'}.")
                 approval = self.queue.get_by_id(approval_id)
                 await self._send_approval_card(query.message.chat_id, approval)
 
@@ -727,7 +753,7 @@ class TelegramBot:
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
-                    "Approve", callback_data=f"approve_{approval['id']}"
+                    "Review", callback_data=f"approve_{approval['id']}"
                 ),
                 InlineKeyboardButton(
                     "Reject", callback_data=f"reject_{approval['id']}"

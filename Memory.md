@@ -22,6 +22,48 @@ D:\Claude_Code\Projects\Clawdbot
 
 ---
 
+## How to Give Jono Instructions
+
+**Jono (0ld3ULL) is NOT a programmer.** Give instructions in plain, step-by-step format:
+
+**DO THIS:**
+```
+1. Open Telegram
+2. Go to @DavidFliptBot
+3. Type: /debasement
+4. Press Send
+```
+
+**OR FOR POWERSHELL:**
+```
+1. Open PowerShell
+2. Copy and paste this command:
+   ssh root@89.167.24.222 "systemctl restart david-flip"
+3. Press Enter
+```
+
+**DON'T DO THIS:**
+- "Just run the script in the venv"
+- "SSH in and check the logs"
+- "Update the PATH variable"
+- Technical jargon without explanation
+
+**RULES:**
+- Number every step
+- One action per step
+- Include exact text to type/paste
+- Say what app to open
+- Say what button to press
+- If it's a command, format it as a code block they can copy
+- Explain what will happen after each step
+
+**WHEN THINGS GO WRONG:**
+- Ask what they see on screen
+- Give them a command to run that shows the error
+- Don't assume they know what "the error" means
+
+---
+
 ## Project Status
 **Phase:** Phase 1 BUILD IN PROGRESS - Foundation code written, needs API keys and testing.
 
@@ -512,6 +554,9 @@ Goal: David can appear on video podcasts, do live interviews, attend virtual eve
 - [x] VPS set up - David running 24/7 on 89.167.24.222
 - [x] Worldview integrated into personality layer (Oracle archetype, brevity, prompt injection defense)
 - [x] Terms/Privacy pages created for flipt.ai
+- [x] **Debasement chart generation working** - matplotlib installed on VPS, /debasement shows real chart image
+- [x] **Button text changed** - "Approve" → "Review" on all approval buttons
+- [x] **"How to give Jono instructions" added to Memory.md** - step-by-step format for non-programmers
 
 ### IN PROGRESS:
 - [ ] Twitter API setup - checking app permissions for mentions access
@@ -521,3 +566,39 @@ Goal: David can appear on video podcasts, do live interviews, attend virtual eve
 2. **Build Twitter monitoring** - Watch mentions, comments on David's posts
 3. **Build Twitter reply flow** - Draft replies → Telegram approval → Post
 4. **Test full Twitter flow** - /tweet → preview → approve → post
+
+---
+
+## Session Log - February 6, 2026 (Afternoon)
+
+### What Was Accomplished:
+
+1. **Debasement Chart Generation Fixed:**
+   - Installed matplotlib + pillow in VPS virtualenv (`/opt/david-flip/venv/bin/pip install matplotlib pillow`)
+   - Created `data/charts/` directory on VPS
+   - Deployed updated `telegram_bot.py` and `chart_generator.py` to VPS
+   - `/debasement` now shows: text report → chart image → two buttons
+
+2. **Button Text Updated:**
+   - Changed "Approve" → "Review" on approval cards
+   - Debasement buttons: "Review (with chart)" / "Review (text only)"
+
+3. **Memory.md Updated:**
+   - Added "How to give Jono instructions" section near top
+   - Rule: step-by-step, numbered, one action per step, include exact text to copy
+
+### VPS Deployment Commands Used:
+```bash
+# Install matplotlib in David's venv
+ssh root@89.167.24.222 "/opt/david-flip/venv/bin/pip install matplotlib pillow"
+
+# Create charts directory
+ssh root@89.167.24.222 "mkdir -p /opt/david-flip/data/charts"
+
+# Deploy updated files
+scp "D:/Claude_Code/Projects/Clawdbot/interfaces/telegram_bot.py" root@89.167.24.222:/opt/david-flip/interfaces/
+scp "D:/Claude_Code/Projects/Clawdbot/tools/chart_generator.py" root@89.167.24.222:/opt/david-flip/tools/
+
+# Restart David
+ssh root@89.167.24.222 "systemctl restart david-flip"
+```

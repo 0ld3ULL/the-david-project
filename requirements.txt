@@ -30,3 +30,6 @@ apscheduler>=3.10.0
 
 # Utilities
 aiosqlite>=0.20.0
+
+# Charts / Visualization
+matplotlib>=3.8.0
