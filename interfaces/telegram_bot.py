@@ -96,6 +96,11 @@ class TelegramBot:
             self.handle_approval_callback, pattern=r"^(approve|reject|edit|postnow|posttwitter|postyoutube|postboth|schedule|scheduleat)_"
         ))
 
+        # David action callbacks
+        self.app.add_handler(CallbackQueryHandler(
+            self.handle_david_callback, pattern=r"^david_"
+        ))
+
         # Catch-all for agent commands
         self.app.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND, self.handle_message
@@ -295,16 +300,18 @@ class TelegramBot:
             text = tracker.format_for_david(report)
             await update.message.reply_text(text, parse_mode="Markdown")
 
-            # Offer to have David comment
+            # Offer to have David comment with a button
             if not report.get("m2_money_supply", {}).get("error"):
-                await update.message.reply_text(
-                    "Want David to tweet about this?\n"
-                    "Reply: `/david debasement report`",
-                    parse_mode="Markdown"
-                )
-
-                # Store report for david command
+                # Store report for callback
                 context.user_data["debasement_report"] = report
+
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("David's Take", callback_data="david_debasement")]
+                ])
+                await update.message.reply_text(
+                    "Want David to tweet about this?",
+                    reply_markup=keyboard
+                )
 
         except Exception as e:
             await update.message.reply_text(f"Error: {e}")
@@ -628,6 +635,53 @@ class TelegramBot:
 
         except Exception as e:
             await update.message.reply_text(f"Error loading schedule: {e}")
+
+    async def handle_david_callback(self, update: Update,
+                                     context: ContextTypes.DEFAULT_TYPE):
+        """Handle David action button clicks."""
+        query = update.callback_query
+        await query.answer()
+
+        if not self._is_operator(update):
+            return
+
+        action = query.data
+
+        if action == "david_debasement":
+            await query.edit_message_text("David is composing his take on debasement...")
+
+            try:
+                # Get stored report or generate new one
+                report = context.user_data.get("debasement_report")
+                if not report:
+                    from tools.debasement_tracker import DebasementTracker
+                    tracker = DebasementTracker()
+                    report = await tracker.generate_debasement_report()
+
+                # Generate David's tweet
+                from tools.debasement_tracker import DebasementTracker
+                tracker = DebasementTracker()
+                prompt = tracker.generate_david_tweet_prompt(report)
+
+                if self.on_command and prompt:
+                    response = await self.on_command("generate_tweet", prompt)
+
+                    # Submit to approval queue
+                    approval_id = self.queue.submit(
+                        project_id="david-flip",
+                        agent_id="david-debasement",
+                        action_type="tweet",
+                        action_data={"text": response},
+                        context_summary="David's take on debasement data",
+                    )
+
+                    approval = self.queue.get_by_id(approval_id)
+                    await self._send_approval_card(query.message.chat_id, approval)
+                else:
+                    await query.edit_message_text("Agent engine not connected.")
+
+            except Exception as e:
+                await query.edit_message_text(f"Error: {e}")
 
     async def handle_message(self, update: Update,
                              context: ContextTypes.DEFAULT_TYPE):
