@@ -153,7 +153,7 @@ class DebasementTracker:
     def calculate_purchasing_power_loss(
         self,
         money_supply_change_pct: float,
-        your_savings: float = 10000,
+        your_savings: float = 100000,
     ) -> dict:
         """
         Calculate how much purchasing power was lost.
@@ -221,7 +221,7 @@ class DebasementTracker:
 
         impact = report.get("impact_on_savings", {})
         if impact:
-            lines.append(f"\nImpact on $10,000 savings (past year):")
+            lines.append(f"\nImpact on $100,000 savings (past year):")
             lines.append(f"  Lost purchasing power: ${impact['purchasing_power_loss_amount']:.2f}")
             lines.append(f"  Effective value: ${impact['effective_value']:,.2f}")
 
@@ -245,7 +245,7 @@ class DebasementTracker:
 DATA:
 - M2 money supply changed ${week_change:+,.0f} billion this week ({week_pct:+.2f}%)
 - Year-over-year money supply change: {year_pct:+.1f}%
-- Someone with $10,000 in savings lost ${loss:.2f} in purchasing power this year
+- Someone with $100,000 in savings lost ${loss:.2f} in purchasing power this year
 
 ANGLE OPTIONS (pick one):
 1. The cold math of how printing steals from savers
