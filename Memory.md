@@ -557,6 +557,7 @@ Goal: David can appear on video podcasts, do live interviews, attend virtual eve
 - [x] **Debasement chart generation working** - matplotlib installed on VPS, /debasement shows real chart image
 - [x] **Button text changed** - "Approve" → "Review" on all approval buttons
 - [x] **"How to give Jono instructions" added to Memory.md** - step-by-step format for non-programmers
+- [x] **Two-Factor Authentication (2FA) added** - Google Authenticator TOTP, 1-hour sessions, protects all sensitive commands
 
 ### IN PROGRESS:
 - [ ] Twitter API setup - checking app permissions for mentions access
@@ -586,6 +587,15 @@ Goal: David can appear on video podcasts, do live interviews, attend virtual eve
 3. **Memory.md Updated:**
    - Added "How to give Jono instructions" section near top
    - Rule: step-by-step, numbered, one action per step, include exact text to copy
+
+4. **Two-Factor Authentication (2FA) Added:**
+   - Created `security/two_factor_auth.py` - TOTP module using pyotp
+   - Installed pyotp + qrcode on VPS
+   - Commands: `/auth <code>`, `/logout`, `/setup2fa`
+   - 1-hour authenticated sessions
+   - Protected: /tweet, /david, /debasement, /davidnews, /video, /reply, /kill, /revive, Review buttons
+   - Not protected (view only): /status, /queue, /cost, /news, /help, /schedule
+   - Secret in VPS .env: `TOTP_SECRET=xxxxx`
 
 ### VPS Deployment Commands Used:
 ```bash

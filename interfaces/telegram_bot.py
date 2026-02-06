@@ -30,6 +30,7 @@ from core.kill_switch import KillSwitch
 from core.token_budget import TokenBudgetManager
 from core.audit_log import AuditLog
 from core.scheduler import ContentScheduler
+from security.two_factor_auth import TwoFactorAuth
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +57,31 @@ class TelegramBot:
         self.audit = audit_log
         self.on_command = on_command
         self.app: Application | None = None
+        self.two_fa = TwoFactorAuth(session_duration_minutes=60)  # 1 hour sessions
 
     def _is_operator(self, update: Update) -> bool:
         """Only respond to the operator."""
         return update.effective_user and update.effective_user.id == self.operator_id
+
+    async def _require_2fa(self, update: Update) -> bool:
+        """
+        Check if 2FA is required and authenticated.
+
+        Returns True if command can proceed, False if blocked.
+        Sends appropriate message to user if blocked.
+        """
+        if not self.two_fa.is_enabled:
+            return True  # 2FA not configured, allow all
+
+        if self.two_fa.is_authenticated:
+            return True  # Already authenticated
+
+        # Need 2FA code
+        await update.message.reply_text(
+            "2FA required. Enter code:\n\n"
+            "Use /auth <6-digit-code> from your authenticator app."
+        )
+        return False
 
     async def start(self):
         """Start the Telegram bot."""
@@ -90,6 +112,11 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("video", self.cmd_video))
         self.app.add_handler(CommandHandler("schedule", self.cmd_schedule))
         self.app.add_handler(CommandHandler("help", self.cmd_help))
+
+        # 2FA commands (no 2FA required for these)
+        self.app.add_handler(CommandHandler("auth", self.cmd_auth))
+        self.app.add_handler(CommandHandler("logout", self.cmd_logout))
+        self.app.add_handler(CommandHandler("setup2fa", self.cmd_setup_2fa))
 
         # Approval callbacks
         self.app.add_handler(CallbackQueryHandler(
@@ -170,9 +197,120 @@ class TelegramBot:
             "**Content:**\n"
             "/video - Generate video\n"
             "/schedule - Show scheduled posts\n\n"
+            "**Security:**\n"
+            "/auth <code> - Enter 2FA code\n"
+            "/logout - End authenticated session\n"
+            "/setup2fa - Set up two-factor auth\n\n"
             "Or just type a message to talk to the agent.",
             parse_mode="Markdown"
         )
+
+    # --- 2FA Commands ---
+
+    async def cmd_auth(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Authenticate with 2FA code."""
+        if not self._is_operator(update):
+            return
+
+        if not self.two_fa.is_enabled:
+            await update.message.reply_text(
+                "2FA is not enabled.\n"
+                "Use /setup2fa to enable two-factor authentication."
+            )
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "Usage: /auth <6-digit-code>\n\n"
+                "Enter the code from your authenticator app."
+            )
+            return
+
+        code = context.args[0].strip()
+
+        if self.two_fa.verify_code(code):
+            expires = self.two_fa.session_expires_in
+            minutes = int(expires.total_seconds() / 60) if expires else 60
+            await update.message.reply_text(
+                f"Authenticated successfully.\n\n"
+                f"Session valid for {minutes} minutes.\n"
+                f"Use /logout to end session early."
+            )
+            self.audit.log("master", "info", "2fa", "2FA authentication successful")
+        else:
+            await update.message.reply_text(
+                "Invalid code. Please try again.\n\n"
+                "Make sure you're using the correct authenticator app "
+                "and the time on your phone is accurate."
+            )
+            self.audit.log("master", "warn", "2fa", "2FA authentication failed - invalid code")
+
+    async def cmd_logout(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """End authenticated session."""
+        if not self._is_operator(update):
+            return
+
+        if not self.two_fa.is_enabled:
+            await update.message.reply_text("2FA is not enabled.")
+            return
+
+        self.two_fa.invalidate_session()
+        await update.message.reply_text(
+            "Session ended.\n\n"
+            "You'll need to enter your 2FA code for the next command."
+        )
+        self.audit.log("master", "info", "2fa", "2FA session manually ended")
+
+    async def cmd_setup_2fa(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Set up two-factor authentication."""
+        if not self._is_operator(update):
+            return
+
+        # Check if already set up
+        if self.two_fa.is_enabled:
+            status = self.two_fa.get_status()
+            auth_status = "Authenticated" if status["authenticated"] else "Not authenticated"
+            expires = f"{status['expires_in_minutes']} min remaining" if status["expires_in_minutes"] else "N/A"
+            await update.message.reply_text(
+                f"**2FA Status**\n\n"
+                f"Enabled: Yes\n"
+                f"Status: {auth_status}\n"
+                f"Session: {expires}\n\n"
+                f"To reset 2FA, you need to update TOTP_SECRET in the .env file on the VPS.",
+                parse_mode="Markdown"
+            )
+            return
+
+        # Generate new secret
+        secret = TwoFactorAuth.generate_new_secret()
+        qr_bytes = TwoFactorAuth.generate_qr_code(secret)
+
+        # Send QR code
+        from io import BytesIO
+        qr_file = BytesIO(qr_bytes)
+        qr_file.name = "2fa_setup.png"
+
+        await update.message.reply_photo(
+            photo=qr_file,
+            caption=(
+                "**2FA Setup**\n\n"
+                "1. Open Google Authenticator (or similar app)\n"
+                "2. Tap + to add account\n"
+                "3. Scan this QR code\n\n"
+                f"**Manual entry secret:**\n`{secret}`\n\n"
+                "**IMPORTANT:** After scanning, add this to VPS:\n"
+                "```\n"
+                f"TOTP_SECRET={secret}\n"
+                "```\n"
+                "Then restart David:\n"
+                "`ssh root@89.167.24.222 \"systemctl restart david-flip\"`\n\n"
+                "Test with /auth <code> after restart."
+            ),
+            parse_mode="Markdown"
+        )
+        self.audit.log("master", "info", "2fa", "2FA setup initiated - new secret generated")
+
+    # --- System Commands ---
 
     async def cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_operator(update):
@@ -194,6 +332,8 @@ class TelegramBot:
     async def cmd_kill(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_operator(update):
             return
+        if not await self._require_2fa(update):
+            return
         reason = " ".join(context.args) if context.args else "Manual kill via Telegram"
         self.kill.activate(reason)
         self.audit.log("master", "critical", "kill_switch",
@@ -206,6 +346,8 @@ class TelegramBot:
 
     async def cmd_revive(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_operator(update):
+            return
+        if not await self._require_2fa(update):
             return
         self.kill.deactivate()
         self.audit.log("master", "info", "kill_switch", "Kill switch deactivated")
@@ -240,6 +382,8 @@ class TelegramBot:
 
     async def cmd_tweet(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_operator(update):
+            return
+        if not await self._require_2fa(update):
             return
         if not context.args:
             await update.message.reply_text("Usage: /tweet <text>")
@@ -287,6 +431,8 @@ class TelegramBot:
     async def cmd_debasement(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Get money printing / debasement report."""
         if not self._is_operator(update):
+            return
+        if not await self._require_2fa(update):
             return
 
         await update.message.reply_text("Fetching debasement data from FRED...")
@@ -337,6 +483,8 @@ class TelegramBot:
     async def cmd_david_news(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Have David comment on a news item from the digest."""
         if not self._is_operator(update):
+            return
+        if not await self._require_2fa(update):
             return
 
         if not context.args:
@@ -391,6 +539,8 @@ class TelegramBot:
     async def cmd_david_tweet(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Have David generate a tweet about a topic."""
         if not self._is_operator(update):
+            return
+        if not await self._require_2fa(update):
             return
         if not context.args:
             await update.message.reply_text(
@@ -464,6 +614,8 @@ class TelegramBot:
         """Draft a reply to a tweet."""
         if not self._is_operator(update):
             return
+        if not await self._require_2fa(update):
+            return
 
         if len(context.args) < 2:
             await update.message.reply_text(
@@ -491,6 +643,8 @@ class TelegramBot:
     async def cmd_video(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Generate a David Flip video."""
         if not self._is_operator(update):
+            return
+        if not await self._require_2fa(update):
             return
 
         # Check for episode number or custom script
@@ -775,6 +929,14 @@ class TelegramBot:
         await query.answer()
 
         if not self._is_operator(update):
+            return
+
+        # Check 2FA for approval actions
+        if self.two_fa.is_enabled and not self.two_fa.is_authenticated:
+            await query.message.reply_text(
+                "2FA required. Enter code:\n\n"
+                "Use /auth <6-digit-code> from your authenticator app."
+            )
             return
 
         data = query.data
