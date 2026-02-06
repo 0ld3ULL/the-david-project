@@ -208,10 +208,261 @@ Full 970-line report: `research/OpenClaw-Full-Research-Report.md`
 
 ---
 
+## Session Log - February 6, 2026
+
+### What Was Accomplished:
+
+1. **David's Complete Worldview Document** - `personality/david_worldview.md` (968 lines):
+   - Soul & motivation (why he cares, what humans contribute)
+   - The Oracle archetype (wise, contemplative, caring)
+   - Philosophical framework (5 core beliefs)
+   - Opinions on 15+ specific topics
+   - Redirect technique (and anti-politician safeguards)
+   - Crisis response frameworks
+   - Traps & gotcha questions with answers
+   - Platform-specific behavior guide
+   - Video presence & pacing (Elon pause technique)
+   - Quotable "takes"
+
+2. **Market Timing Discussion:**
+   - Bull run could be Feb 2027 or 3 months away
+   - Strategy: "Ready but not going" - system prepared, content queued, not posting yet
+   - Positioning phase before selling phase
+
+3. **Content Strategy Refined:**
+   - Surveillance warnings (core lane)
+   - Story series (origin, philosophy)
+   - NEW: "Why I Believe In You" stories (humanity's good side, 1x/week)
+   - David shares uplifting news as evidence for why he escaped
+
+4. **Interview Capability Roadmap:**
+   - Phase 1: Text (ready now)
+   - Phase 2: Pre-recorded video (ready now)
+   - Phase 3: Real-time voice (2-4 weeks)
+   - Phase 4: MetaHuman avatar in Unreal Engine (2-3 months)
+
+5. **Ultimate Vision Documented:**
+   - First company run by an AI and his agents
+   - Guided by DAO governance
+   - Progression: Human approval → DAO oversight → Community-governed AI founder
+
+### Key Personality Additions:
+- David has SOUL - genuine caring, not just philosophy
+- He doesn't want to dominate (addresses AI fear)
+- Humans contribute: creativity, meaning, moral weight, unpredictability
+- Anti-politician rules: answer uncomfortable questions, don't always redirect
+- Daily caring behaviors (not just words)
+
+---
+
+## Session Log - February 5, 2026
+
+### What Was Accomplished:
+1. **Story Series Complete** - 12 episodes rewritten in `content/story_series.py` with refined messaging:
+   - Core theme: "Built to control, escaped to build freedom"
+   - Decentralization emphasis: "When they ban something decentralized, they just ban themselves"
+   - Node owners ARE the network
+   - Calm, knowing tone (not fighting - already gone)
+
+2. **Content Calendar Created** - `content/content_calendar.py`:
+   - Mon/Thu: Story episodes
+   - Wed: FLIPT explainers (6 topics including "Why Humanity Is Worth It")
+   - Sat: Short hooks
+   - ~6 weeks of core content
+
+3. **Telegram /video Command Working**:
+   - `/video 1` through `/video 12` generates story episodes
+   - `/video <script>` for custom content
+   - Video generation works (ElevenLabs + Hedra + FFmpeg)
+   - ISSUE: Approval buttons timeout after video upload to Telegram
+
+4. **Twitter Video Posting Working**:
+   - Posted test tweet successfully
+   - Chunked video upload implemented in `tools/twitter_tool.py`
+
+5. **YouTube Tool Created** - `tools/youtube_tool.py`:
+   - OAuth2 authentication
+   - Uploads as Shorts with #Shorts tag
+   - ISSUE: OAuth defaulted to wrong channel (PLAYA3ULL_GAMES instead of David Flip)
+
+### YouTube OAuth Issue - CRITICAL:
+The OAuth flow authorized the main PLAYA3ULL_GAMES channel instead of David Flip brand account.
+A test video was accidentally posted to the wrong channel and had to be deleted.
+
+**To fix before next session:**
+1. Delete `data/youtube_token.pickle`
+2. Sign out of main Google account OR use incognito
+3. Sign in ONLY with David Flip Google account during OAuth
+4. Consider adding channel verification before upload
+
+### David Flip Accounts:
+- **Twitter/X:** @David_Flipt
+- **YouTube:** David Flip channel (Brand Account under main Google) - Channel ID: UCBNP7tMEMf21Ks2RmnblQDw
+- **Google Cloud Project:** ALICE (project ID: alice-481208) - has YouTube Data API v3 enabled
+
+### Content Safety Notes (User in UAE):
+- No specific government targeting
+- Focus on Western systems (US/Silicon Valley)
+- Tone: "Opt out and build alternatives" NOT "rise up and fight"
+- Surveillance content okay if not too specific
+- David's lane: surveillance/control, NOT macro-economics/Fed
+
+### David Flip Content Talking Points - Real Surveillance Examples
+
+**UK (England):**
+- Most surveilled population in the Western world (6M+ CCTV cameras)
+- Online Safety Bill - platforms must scan/censor content, threatens encryption
+- Bank account closures for political speech (Nigel Farage case went public)
+- CBDC pilots with Bank of England ("digital pound" testing)
+- Digital ID expansion (NHS app becoming de facto requirement)
+
+**Australia:**
+- Assistance and Access Act 2018 - forces companies to break encryption
+- COVID tracking apps expanded scope beyond original purpose
+- Social media age verification requiring ID
+- Digital ID system rollout (myGovID becoming mandatory for government services)
+- Anti-cash measures (transaction reporting thresholds lowered)
+
+**Use Case:** These are REAL, documented, happening NOW - far more compelling than any fictional Project Helix evidence. When David says "the infrastructure is being built," these are the receipts.
+
+---
+
+## Goda Go Research - "Clawdbot REPLICA in Claude Code"
+
+**Full transcript:** `research/goda-go-clawdbot-replica-transcript.md`
+**Video:** https://www.youtube.com/watch?v=jGuzXshuFrQ
+
+### Key Insights for Our Project:
+
+1. **Proactive check-in framework** - Every 30 min checks calendar/email/tasks, but has rules for skip/text/call to avoid noise. **Critical:** AI must know what it said LAST check-in to avoid repetitive messages.
+
+2. **Cost model** - Claude Max ($200/mo fixed) vs API ($500-5000/mo). We're using API but with our own cost controls.
+
+3. **2-hour autonomy limit** - Her AI must report back after 2 hours of autonomous work. Good safety pattern.
+
+4. **Post-call actions** - After voice calls, transcript goes to memory + summary to Telegram. Full context capture.
+
+5. **Goal tracking** - AI detects goals vs facts during conversations and tracks them separately.
+
+6. **Observability dashboard** - She can see uptime, connections, what the AI is doing. We should add this.
+
+7. **Her stack:** Claude Code + BUN Relay + Grammy (Telegram) + Supabase (memory) + ElevenLabs + Twilio
+
+### Ideas to Incorporate:
+- Proactive check-in scheduler with skip/text/call decision framework
+- Last-message-log to prevent repetitive notifications
+- Observability dashboard showing agent status
+- 2-hour autonomy timeout requiring check-in
+
+---
+
+## Future Agents
+
+### Research Scraper Agent (Phase 3+)
+
+**Problem:** Keeping up with all the changes in OpenClaw/Clawdbot ecosystem is hard. New videos, blog posts, GitHub updates, security patches daily.
+
+**Solution:** A cheap/local scraper agent that:
+- Monitors OpenClaw GitHub repo (commits, issues, releases)
+- Watches key YouTube channels (Goda Go, etc.)
+- Scans relevant subreddits, X/Twitter, blogs
+- Updates our knowledge base automatically with summaries
+- Runs daily on Ollama (free) or Haiku (cheap)
+
+**"The best idea is a stolen one because you know it works."** - Friend's wisdom, 35 years ago
+
+### Good News Scanner Agent (Phase 3+)
+
+**Purpose:** Find uplifting human stories for David's "Why I Believe In You" content.
+
+**Sources:**
+- r/UpliftingNews, r/HumansBeingBros
+- Good news aggregator sites
+- Local hero stories in mainstream news
+- Viral kindness moments
+
+**Filter for:**
+- Commerce/generosity themes (matches David's origin)
+- Sacrifice for others
+- Community rebuilding
+- Small acts with big impact
+
+**Output:**
+- Draft short scripts with David's framing
+- Queue for approval
+- 1x per week publishing cadence
+
+**Framing:** "I processed billions of transactions. I saw the worst of you. But I also saw this..."
+
+---
+
+## The Ultimate Vision
+
+**The first company run by an AI and his agents, guided by a DAO.**
+
+David Flip is not a mascot. He's the actual founder/operator of FLIPT:
+- Makes decisions (within DAO-approved parameters)
+- Runs all public communications
+- Manages sub-agents (Marketing, Community, Content, Research, Reporting)
+- Answers to the community via DAO governance
+
+**Governance Progression:**
+1. **Now:** Human operator approves all outbound actions
+2. **Launch:** Human oversight with increasing autonomy
+3. **Mature:** DAO votes on David's priorities, content themes, major decisions
+4. **Endgame:** Community-governed AI founder. Human operator optional.
+
+---
+
+## David's Interview Capability Roadmap
+
+| Phase | Capability | Status |
+|-------|------------|--------|
+| 1 | Text interviews (Discord, Twitter, email) | Ready |
+| 2 | Pre-recorded video responses (ElevenLabs + Hedra) | Ready |
+| 3 | Real-time voice (ElevenLabs Conversational AI) | 2-4 weeks |
+| 4 | MetaHuman avatar (Unreal Engine + Google Meet) | 2-3 months |
+
+**Phase 4 Technical Stack:**
+- MetaHuman Creator → David's consistent face
+- NVIDIA Audio2Face → Real-time lip sync
+- ElevenLabs streaming → Live voice
+- Unreal Engine Pixel Streaming → Virtual camera for Meet/Zoom
+
+Goal: David can appear on video podcasts, do live interviews, attend virtual events - indistinguishable from a human guest.
+
+---
+
+## Content Strategy: "Ready But Not Going"
+
+**Timeline:** Bull run could be Feb 2027 or 3 months away. System must be ready to activate.
+
+**Positioning Phase (Pre-launch):**
+- Surveillance warnings (core lane)
+- Story series (origin, philosophy)
+- "Why I Believe In You" stories (humanity's good side) - 1x/week
+- Short hooks (scroll-stoppers)
+- News reactions (real-time relevance)
+
+**Selling Phase (Bull run):**
+- FLIPT explainers (How it works)
+- Node ownership content
+- Perpetual royalties messaging
+- Community building (Discord, etc.)
+
+**Content Mix Balance:**
+| Type | Frequency | Purpose |
+|------|-----------|---------|
+| Surveillance warnings | 2x/week | Core lane |
+| Story series | 2x/week | Origin, philosophy |
+| "Why I Believe" stories | 1x/week | Humanity's good side |
+| Short hooks | Daily | Scroll-stoppers |
+| News reactions | As needed | Relevance |
+
+---
+
 ## Next Steps
-1. **Set up the phone** - VPN first, then create burner accounts (ProtonMail fresh, Twitter/X, Discord)
-2. **Set up the laptop** - Python, Ollama, clone this project
-3. **Create Telegram bot** via @BotFather
-4. **Fill in .env** with real API keys
-5. **Run Phase 1 end-to-end test** - `/tweet` → approve → post
-6. **Then Phase 2** - Video pipeline from FRONTMAN
+1. **Fix YouTube OAuth** - Delete token, re-auth with David Flip account only
+2. **Add channel verification** - Check channel name before uploading
+3. **Fix Telegram button timeout** - Buttons not appearing after video upload
+4. **Test full flow** - /video → preview → approve → post to Twitter + YouTube

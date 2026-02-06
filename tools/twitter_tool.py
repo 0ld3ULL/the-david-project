@@ -157,6 +157,38 @@ class TwitterTool:
             logger.error(f"Reply failed: {e}")
             return {"error": str(e)}
 
+    # --- Video posting ---
+
+    async def post_video(self, text: str, video_path: str) -> dict:
+        """Post a tweet with video attachment using chunked upload."""
+        self._ensure_client()
+
+        try:
+            # Chunked upload for video
+            media = self._api.chunked_upload(
+                video_path,
+                media_category="tweet_video",
+                wait_for_async_finalize=True,
+            )
+            logger.info(f"Video uploaded: media_id={media.media_id}")
+
+            # Post tweet with video
+            result = self._client.create_tweet(
+                text=text,
+                media_ids=[media.media_id],
+            )
+            tweet_id = result.data["id"]
+            logger.info(f"Video tweet posted: {tweet_id}")
+            return {
+                "tweet_id": tweet_id,
+                "url": f"https://x.com/i/status/{tweet_id}",
+                "media_id": media.media_id,
+            }
+
+        except Exception as e:
+            logger.error(f"Video post failed: {e}")
+            return {"error": str(e)}
+
     # --- Read methods (no approval needed) ---
 
     def get_mentions(self, count: int = 20) -> list[dict]:

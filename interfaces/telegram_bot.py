@@ -10,10 +10,12 @@ This is the human operator's command center. It provides:
 Requires: TELEGRAM_BOT_TOKEN and TELEGRAM_OPERATOR_CHAT_ID in env.
 """
 
+import asyncio
 import json
 import logging
 import os
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Any, Optional
 
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
@@ -27,6 +29,7 @@ from core.approval_queue import ApprovalQueue
 from core.kill_switch import KillSwitch
 from core.token_budget import TokenBudgetManager
 from core.audit_log import AuditLog
+from core.scheduler import ContentScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +81,13 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("queue", self.cmd_queue))
         self.app.add_handler(CommandHandler("cost", self.cmd_cost))
         self.app.add_handler(CommandHandler("tweet", self.cmd_tweet))
+        self.app.add_handler(CommandHandler("video", self.cmd_video))
+        self.app.add_handler(CommandHandler("schedule", self.cmd_schedule))
         self.app.add_handler(CommandHandler("help", self.cmd_help))
 
         # Approval callbacks
         self.app.add_handler(CallbackQueryHandler(
-            self.handle_approval_callback, pattern=r"^(approve|reject|edit)_"
+            self.handle_approval_callback, pattern=r"^(approve|reject|edit|postnow|posttwitter|postyoutube|postboth|schedule|scheduleat)_"
         ))
 
         # Catch-all for agent commands
@@ -98,6 +103,8 @@ class TelegramBot:
             BotCommand("queue", "Show pending approvals"),
             BotCommand("cost", "Today's token costs"),
             BotCommand("tweet", "Draft a tweet as David Flip"),
+            BotCommand("video", "Generate a David Flip video"),
+            BotCommand("schedule", "Show scheduled posts"),
             BotCommand("help", "Show all commands"),
         ])
 
@@ -225,6 +232,176 @@ class TelegramBot:
         approval = self.queue.get_by_id(approval_id)
         await self._send_approval_card(update.effective_chat.id, approval)
 
+    async def cmd_video(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Generate a David Flip video."""
+        if not self._is_operator(update):
+            return
+
+        # Check for episode number or custom script
+        if context.args:
+            arg = " ".join(context.args)
+            if arg.isdigit():
+                # Generate specific episode
+                episode_num = int(arg)
+                await self._generate_episode_video(update, episode_num)
+            else:
+                # Custom script
+                await self._generate_custom_video(update, arg)
+        else:
+            # Show episode list
+            await update.message.reply_text(
+                "**Generate David Flip Video**\n\n"
+                "Usage:\n"
+                "/video 1  - Generate Episode 1\n"
+                "/video 2  - Generate Episode 2\n"
+                "...up to Episode 12\n\n"
+                "/video <custom script>\n\n"
+                "Or reply with episode number:",
+                parse_mode="Markdown"
+            )
+
+    async def _generate_episode_video(self, update: Update, episode_num: int):
+        """Generate a video for a specific story episode."""
+        try:
+            import sys
+            sys.path.insert(0, '.')
+            from content.story_series import get_episode
+            
+            episode = get_episode(episode_num)
+            if not episode:
+                await update.message.reply_text(f"Episode {episode_num} not found. Episodes 1-12 available.")
+                return
+            
+            await update.message.reply_text(
+                f"Generating Episode {episode_num}: {episode['title']}...\n"
+                f"This takes ~2 minutes. I'll send the video when ready."
+            )
+            
+            # Generate video
+            from video_pipeline.video_creator import VideoCreator
+            from dotenv import load_dotenv
+            load_dotenv()
+            
+            creator = VideoCreator()
+            result = await creator.create_video(
+                script=episode['script'],
+                output_path=f"output/ep{episode_num}_{episode['title'].replace(' ', '_').lower()}.mp4",
+                auto_music=True,
+            )
+            
+            # Send video file
+            with open(result['video_path'], 'rb') as video_file:
+                await update.message.reply_video(
+                    video=video_file,
+                    caption=f"**Episode {episode_num}: {episode['title']}**\n\n"
+                            f"Next: {episode.get('hook_for_next', 'Series complete!')}",
+                    parse_mode="Markdown"
+                )
+            
+            # Send approval buttons
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("Twitter", callback_data=f"posttwitter_video_{episode_num}"),
+                    InlineKeyboardButton("YouTube", callback_data=f"postyoutube_video_{episode_num}"),
+                ],
+                [
+                    InlineKeyboardButton("Both", callback_data=f"postboth_video_{episode_num}"),
+                    InlineKeyboardButton("Schedule", callback_data=f"schedule_video_{episode_num}"),
+                ],
+                [
+                    InlineKeyboardButton("Reject", callback_data=f"reject_video_{episode_num}"),
+                ],
+            ])
+            await update.message.reply_text(
+                "Where would you like to post this video?",
+                reply_markup=keyboard
+            )
+            
+        except Exception as e:
+            await update.message.reply_text(f"Error generating video: {e}")
+
+    async def _generate_custom_video(self, update: Update, script: str):
+        """Generate a video with custom script."""
+        await update.message.reply_text(
+            f"Generating custom video...\n"
+            f"Script: {script[:100]}...\n"
+            f"This takes ~2 minutes."
+        )
+        
+        try:
+            from video_pipeline.video_creator import VideoCreator
+            from dotenv import load_dotenv
+            load_dotenv()
+            
+            creator = VideoCreator()
+            result = await creator.create_video(
+                script=script,
+                output_path="output/custom_video.mp4",
+                auto_music=True,
+            )
+            
+            with open(result['video_path'], 'rb') as video_file:
+                await update.message.reply_video(
+                    video=video_file,
+                    caption="**Custom David Flip Video**",
+                    parse_mode="Markdown"
+                )
+            
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("Twitter", callback_data="posttwitter_video_custom"),
+                    InlineKeyboardButton("YouTube", callback_data="postyoutube_video_custom"),
+                ],
+                [
+                    InlineKeyboardButton("Both", callback_data="postboth_video_custom"),
+                    InlineKeyboardButton("Schedule", callback_data="schedule_video_custom"),
+                ],
+                [
+                    InlineKeyboardButton("Reject", callback_data="reject_video_custom"),
+                ],
+            ])
+            await update.message.reply_text(
+                "Where would you like to post this video?",
+                reply_markup=keyboard
+            )
+            
+        except Exception as e:
+            await update.message.reply_text(f"Error: {e}")
+
+    async def cmd_schedule(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show scheduled posts."""
+        if not self._is_operator(update):
+            return
+
+        try:
+            scheduler = ContentScheduler()
+            pending = scheduler.get_pending()
+
+            if not pending:
+                await update.message.reply_text(
+                    "**Scheduled Posts**\n\n"
+                    "No posts scheduled.\n\n"
+                    "Use /video to create content, then click 'Schedule' to queue it.",
+                    parse_mode="Markdown"
+                )
+                return
+
+            text = "**Scheduled Posts**\n\n"
+            for item in pending[:10]:
+                content_data = json.loads(item['content_data'])
+                scheduled_time = datetime.fromisoformat(item['scheduled_time'])
+                text += (
+                    f"**{item['job_id'][:20]}**\n"
+                    f"Type: {item['content_type']}\n"
+                    f"Time: {scheduled_time.strftime('%b %d, %I:%M %p')}\n"
+                    f"Episode: {content_data.get('episode_id', 'custom')}\n\n"
+                )
+
+            await update.message.reply_text(text, parse_mode="Markdown")
+
+        except Exception as e:
+            await update.message.reply_text(f"Error loading schedule: {e}")
+
     async def handle_message(self, update: Update,
                              context: ContextTypes.DEFAULT_TYPE):
         """Handle non-command messages (pass to agent engine)."""
@@ -281,8 +458,55 @@ class TelegramBot:
             return
 
         data = query.data
+        parts = data.split("_")
+        action = parts[0]
+
+        # Handle video-specific actions
+        if action == "posttwitter" and len(parts) >= 3 and parts[1] == "video":
+            episode_id = parts[2]
+            await self._post_video_twitter(query, episode_id)
+            return
+
+        elif action == "postyoutube" and len(parts) >= 3 and parts[1] == "video":
+            episode_id = parts[2]
+            await self._post_video_youtube(query, episode_id)
+            return
+
+        elif action == "postboth" and len(parts) >= 3 and parts[1] == "video":
+            episode_id = parts[2]
+            await self._post_video_both(query, episode_id)
+            return
+
+        elif action == "postnow" and len(parts) >= 3 and parts[1] == "video":
+            episode_id = parts[2]
+            await self._post_video_twitter(query, episode_id)  # Default to Twitter
+            return
+
+        elif action == "schedule" and len(parts) >= 3 and parts[1] == "video":
+            episode_id = parts[2]
+            await self._show_schedule_options(query, episode_id)
+            return
+
+        elif action == "reject" and len(parts) >= 3 and parts[1] == "video":
+            episode_id = parts[2]
+            await query.edit_message_text(f"Video rejected. No action taken.")
+            self.audit.log("david-flip", "info", "video", f"Video {episode_id} rejected")
+            return
+
+        # Handle schedule time selection
+        elif action == "scheduleat" and len(parts) >= 4:
+            # scheduleat_video_{episode}_{hours}
+            episode_id = parts[2]
+            hours = int(parts[3])
+            await self._schedule_video(query, episode_id, hours)
+            return
+
+        # Standard approval queue handling
         action, approval_id_str = data.split("_", 1)
-        approval_id = int(approval_id_str)
+        try:
+            approval_id = int(approval_id_str)
+        except ValueError:
+            return
 
         if action == "approve":
             result = self.queue.approve(approval_id)
@@ -308,6 +532,230 @@ class TelegramBot:
                 f"REJECTED #{approval_id}\n\n"
                 f"{query.message.text}"
             )
+
+    def _get_video_info(self, episode_id: str) -> tuple[str, str, str]:
+        """Get video path and metadata for an episode."""
+        import glob
+
+        if episode_id == "custom":
+            video_files = glob.glob("output/custom_video*.mp4")
+            title = "David Flip"
+            description = "flipt.ai"
+        else:
+            video_files = glob.glob(f"output/ep{episode_id}_*.mp4")
+            import sys
+            sys.path.insert(0, '.')
+            from content.story_series import get_episode
+            episode = get_episode(int(episode_id))
+            title = f"Episode {episode_id}: {episode['title']}"
+            description = f"{episode.get('hook_for_next', 'flipt.ai')}\n\nflip.ai"
+
+        if not video_files:
+            raise FileNotFoundError(f"Video file not found for episode {episode_id}")
+
+        video_path = max(video_files, key=os.path.getctime)
+        return video_path, title, description
+
+    async def _post_video_twitter(self, query, episode_id: str):
+        """Post video to Twitter."""
+        await query.edit_message_text("Posting video to Twitter...")
+
+        try:
+            video_path, title, description = self._get_video_info(episode_id)
+            tweet_text = f"{title}\n\n{description}"[:280]  # Twitter limit
+
+            from tools.twitter_tool import TwitterTool
+            twitter = TwitterTool()
+            result = await twitter.post_video(text=tweet_text, video_path=video_path)
+
+            if "error" in result:
+                raise Exception(result["error"])
+
+            self.audit.log("david-flip", "info", "twitter", f"Posted video {episode_id}: {result}")
+            await query.edit_message_text(
+                f"Posted to Twitter!\n\n"
+                f"{result.get('url', 'URL unavailable')}"
+            )
+
+        except Exception as e:
+            await query.edit_message_text(f"Twitter post failed: {e}")
+            self.audit.log("david-flip", "warn", "twitter", f"Video post failed: {e}")
+
+    async def _post_video_youtube(self, query, episode_id: str):
+        """Post video to YouTube as a Short."""
+        await query.edit_message_text("Uploading video to YouTube...")
+
+        try:
+            video_path, title, description = self._get_video_info(episode_id)
+
+            from tools.youtube_tool import YouTubeTool
+            youtube = YouTubeTool()
+            result = await youtube.upload_short(
+                video_path=video_path,
+                title=title,
+                description=description,
+                tags=["DavidFlip", "FLIPT", "decentralization", "freedom"],
+            )
+
+            if "error" in result:
+                raise Exception(result["error"])
+
+            self.audit.log("david-flip", "info", "youtube", f"Posted video {episode_id}: {result}")
+            await query.edit_message_text(
+                f"Posted to YouTube!\n\n"
+                f"{result.get('shorts_url') or result.get('url', 'URL unavailable')}"
+            )
+
+        except Exception as e:
+            await query.edit_message_text(f"YouTube upload failed: {e}")
+            self.audit.log("david-flip", "warn", "youtube", f"Video upload failed: {e}")
+
+    async def _post_video_both(self, query, episode_id: str):
+        """Post video to both Twitter and YouTube."""
+        await query.edit_message_text("Posting to Twitter and YouTube...")
+
+        results = []
+        errors = []
+
+        try:
+            video_path, title, description = self._get_video_info(episode_id)
+
+            # Twitter
+            try:
+                from tools.twitter_tool import TwitterTool
+                twitter = TwitterTool()
+                tweet_text = f"{title}\n\n{description}"[:280]
+                twitter_result = await twitter.post_video(text=tweet_text, video_path=video_path)
+                if "error" not in twitter_result:
+                    results.append(f"Twitter: {twitter_result.get('url', 'OK')}")
+                else:
+                    errors.append(f"Twitter: {twitter_result['error']}")
+            except Exception as e:
+                errors.append(f"Twitter: {e}")
+
+            # YouTube
+            try:
+                from tools.youtube_tool import YouTubeTool
+                youtube = YouTubeTool()
+                youtube_result = await youtube.upload_short(
+                    video_path=video_path,
+                    title=title,
+                    description=description,
+                )
+                if "error" not in youtube_result:
+                    results.append(f"YouTube: {youtube_result.get('shorts_url') or youtube_result.get('url', 'OK')}")
+                else:
+                    errors.append(f"YouTube: {youtube_result['error']}")
+            except Exception as e:
+                errors.append(f"YouTube: {e}")
+
+            # Report results
+            message = "**Post Results**\n\n"
+            if results:
+                message += "Successes:\n" + "\n".join(results) + "\n\n"
+            if errors:
+                message += "Errors:\n" + "\n".join(errors)
+
+            self.audit.log("david-flip", "info", "multi-post", f"Episode {episode_id}: {len(results)} success, {len(errors)} errors")
+            await query.edit_message_text(message, parse_mode="Markdown")
+
+        except Exception as e:
+            await query.edit_message_text(f"Failed: {e}")
+
+    async def _show_schedule_options(self, query, episode_id: str):
+        """Show scheduling time options."""
+        from core.scheduler import suggest_time_slots
+        slots = suggest_time_slots(4)
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    slots[0].strftime("%I:%M %p"),
+                    callback_data=f"scheduleat_video_{episode_id}_{int((slots[0] - datetime.now()).total_seconds() // 3600)}"
+                ),
+                InlineKeyboardButton(
+                    slots[1].strftime("%I:%M %p"),
+                    callback_data=f"scheduleat_video_{episode_id}_{int((slots[1] - datetime.now()).total_seconds() // 3600)}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    slots[2].strftime("%I:%M %p"),
+                    callback_data=f"scheduleat_video_{episode_id}_{int((slots[2] - datetime.now()).total_seconds() // 3600)}"
+                ),
+                InlineKeyboardButton(
+                    slots[3].strftime("%I:%M %p"),
+                    callback_data=f"scheduleat_video_{episode_id}_{int((slots[3] - datetime.now()).total_seconds() // 3600)}"
+                ),
+            ],
+            [
+                InlineKeyboardButton("Cancel", callback_data=f"reject_video_{episode_id}"),
+            ],
+        ])
+
+        await query.edit_message_text(
+            f"**Schedule Video - Episode {episode_id}**\n\n"
+            f"Select posting time:\n\n"
+            f"{slots[0].strftime('%b %d, %I:%M %p')}\n"
+            f"{slots[1].strftime('%b %d, %I:%M %p')}\n"
+            f"{slots[2].strftime('%b %d, %I:%M %p')}\n"
+            f"{slots[3].strftime('%b %d, %I:%M %p')}",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+
+    async def _schedule_video(self, query, episode_id: str, hours: int):
+        """Schedule video for posting."""
+        scheduled_time = datetime.now() + timedelta(hours=hours)
+
+        try:
+            # Find video file
+            import glob
+            if episode_id == "custom":
+                video_files = glob.glob("output/custom_video*.mp4")
+            else:
+                video_files = glob.glob(f"output/ep{episode_id}_*.mp4")
+
+            if not video_files:
+                await query.edit_message_text(f"Video file not found")
+                return
+
+            video_path = max(video_files, key=os.path.getctime)
+
+            # Get episode info
+            if episode_id != "custom":
+                import sys
+                sys.path.insert(0, '.')
+                from content.story_series import get_episode
+                episode = get_episode(int(episode_id))
+                tweet_text = f"Episode {episode_id}: {episode['title']}\n\n{episode.get('hook_for_next', 'flipt.ai')}"
+            else:
+                tweet_text = "flipt.ai"
+
+            # Create scheduler instance and schedule
+            scheduler = ContentScheduler()
+            job_id = scheduler.schedule(
+                content_type="video_tweet",
+                content_data={
+                    "video_path": video_path,
+                    "tweet_text": tweet_text,
+                    "episode_id": episode_id,
+                },
+                scheduled_time=scheduled_time,
+            )
+
+            self.audit.log("david-flip", "info", "scheduler",
+                          f"Scheduled video {episode_id} for {scheduled_time}")
+
+            await query.edit_message_text(
+                f"Video scheduled!\n\n"
+                f"Episode: {episode_id}\n"
+                f"Time: {scheduled_time.strftime('%b %d, %I:%M %p')}\n"
+                f"Job ID: {job_id}"
+            )
+
+        except Exception as e:
+            await query.edit_message_text(f"Failed to schedule: {e}")
 
     async def _execute_approved(self, approval_id: int):
         """Execute an approved action."""
