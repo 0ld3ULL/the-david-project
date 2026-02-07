@@ -263,6 +263,10 @@ class VoiceAssistant:
 def main():
     """Run DEVA voice assistant."""
     import argparse
+    from dotenv import load_dotenv
+
+    # Load environment variables
+    load_dotenv()
 
     parser = argparse.ArgumentParser(description="DEVA Voice Assistant")
     parser.add_argument(
