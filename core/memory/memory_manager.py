@@ -127,6 +127,25 @@ class MemoryManager:
             return context, "clear"
         return "", "blank"
 
+    # ============== TWEETS ==============
+
+    def remember_tweet(self, text: str, context: str = "", posted: bool = True):
+        """Remember a tweet David posted."""
+        title = f"Tweet: {text[:50]}..." if len(text) > 50 else f"Tweet: {text}"
+        summary = f"Posted tweet: {text}"
+        if context:
+            summary += f" | Context: {context}"
+
+        # Store as an event with high significance (David's own output)
+        return self.events.add(
+            title=title,
+            summary=summary,
+            significance=7,  # His own tweets matter
+            category="tweet",
+            source="david",
+            url=context if context.startswith("http") else ""
+        )
+
     # ============== EVENTS ==============
 
     def remember_event(self, title: str, summary: str, significance: int = 5,
