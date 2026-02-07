@@ -833,10 +833,25 @@ ActionRouter
 
 ---
 
-## David Dev Mode - Voice-Controlled Game Development (Future Vision)
+## DEVA - The Dev Diva (Game Development Assistant)
+
+### What is DEVA?
+**DEVA** (Developer Expert Virtual Assistant) - pronounced "Diva" - is a separate AI personality from David Flip. She's a game development assistant with full diva energy.
+
+- **David Flip:** FLIPT AI founder, male voice, surveillance/freedom content, lives on VPS
+- **DEVA:** Game dev assistant, female voice, Unity/Unreal/Godot expert, lives on dedicated laptop
+
+### DEVA's Personality
+- Knows she's brilliant. Because she is.
+- Dramatic about bad code. "*Sigh* ...this function. We need to TALK."
+- High standards. Won't let you ship garbage.
+- Actually helpful under the attitude.
+- "I found your bug. You're welcome."
+
+**Personality file:** `personality/deva.py`
 
 ### The Vision
-David as a real-time voice-controlled development partner for Unity, Unreal Engine, and Godot. Load entire game projects into context, talk to David while working, and have him see, understand, and modify your code.
+DEVA as a real-time voice-controlled development partner for Unity, Unreal Engine, and Godot. Load entire game projects into context, talk to her while working, and have her see, understand, and modify your code.
 
 ### "Wall Mode" - Full Project Context
 
@@ -887,22 +902,22 @@ Can fit:
 
 ### Voice Interaction
 
-**Full David Dev Mode Stack:**
+**DEVA Stack:**
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    DAVID DEV MODE                            │
+│                         DEVA                                 │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
-│   YOU ──voice──▶ [Whisper] ──text──▶ DAVID                  │
+│   YOU ──voice──▶ [Whisper] ──text──▶ DEVA                   │
 │                                         │                    │
 │   YOU ◀──voice── [ElevenLabs] ◀─text───┘                    │
 │                                                              │
-│   DAVID can see:                                             │
+│   DEVA can see:                                              │
 │   ├── Your screen (Computer Use)                             │
 │   ├── Entire codebase (Wall Mode / 10M context)              │
 │   └── Unity console logs                                     │
 │                                                              │
-│   DAVID can do:                                              │
+│   DEVA can do:                                               │
 │   ├── Talk back to you                                       │
 │   ├── Edit code                                              │
 │   └── Click/type in Unity (Computer Use)                     │
@@ -920,15 +935,19 @@ Can fit:
 | Control | Computer Use API | Part of Claude |
 
 **Example Workflow:**
-> "Hey David, the player is falling through the floor after sitting"
+> "Hey Deva, the player is falling through the floor after sitting"
 >
-> *David loads seat system code, checks recent changes, sees Unity console*
+> *DEVA loads seat system code, checks recent changes, sees Unity console*
 >
-> "I see the issue. In NetworkedThirdPerson line 342, the collider gets disabled but never re-enabled on exit. Want me to fix it?"
+> "Oh honey, no. Line 342. The collider gets disabled and NEVER re-enabled.
+> I've been staring at this for 0.3 seconds and honestly I'm offended.
+> Want me to fix it or do you want to savor the moment?"
 >
 > "Yeah fix it"
 >
-> *David edits the file, Unity hot-reloads*
+> *DEVA edits the file, Unity hot-reloads*
+>
+> "Fixed. You're welcome. That's three bugs today. I'm keeping count."
 
 ### Implementation Order
 
@@ -954,5 +973,32 @@ When you can see ALL systems together in one context, you can spot:
 - State that gets out of sync
 
 With 10M tokens, it's not "search for the problem" anymore - it's **see the whole machine at once**.
+
+### DEVA's Hardware
+
+**DEVA's Machine:** ASUS ROG Strix Gaming Laptop (dedicated, isolated)
+
+| Component | Spec |
+|-----------|------|
+| CPU | Intel Core i7-13650HX (14 cores) |
+| RAM | 16GB DDR5 |
+| GPU | NVIDIA RTX 4060 Laptop (8GB VRAM) |
+| Storage | 1TB NVMe SSD |
+| Display | 2560x1600 @ 240Hz |
+| Audio | Realtek HD (built-in mic) |
+
+**Security Isolation:**
+- NO crypto wallets
+- NO banking apps
+- NO personal email
+- NO access to main PC
+- Guest WiFi network (isolated from home network)
+- Can be wiped and restored from git anytime
+
+**Voice:**
+- ElevenLabs Voice: "Veronica - Sassy and Energetic"
+- Voice ID: `ejl43bbp2vjkAFGSmAMa`
+
+**User's Main PC (i9-12900K + RTX 4070):** DEVA has ZERO access. Ever.
 
 ---
