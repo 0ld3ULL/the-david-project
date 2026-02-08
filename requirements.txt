@@ -31,6 +31,9 @@ qrcode[pil]>=7.4.0
 apscheduler>=3.10.0
 sqlalchemy>=2.0.0
 
+# Research / Transcripts
+youtube-transcript-api>=1.0.0  # YouTube video transcript extraction (free, no API key)
+
 # Utilities
 aiosqlite>=0.20.0
 

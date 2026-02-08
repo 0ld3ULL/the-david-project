@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from .knowledge_store import KnowledgeStore, ResearchItem
 from .evaluator import GoalEvaluator
 from .action_router import ActionRouter
-from .scrapers import RSSScraper, GitHubScraper, RedditScraper, YouTubeScraper
+from .scrapers import RSSScraper, GitHubScraper, RedditScraper, YouTubeScraper, TranscriptScraper
 
 if TYPE_CHECKING:
     from core.model_router import ModelRouter
@@ -60,6 +60,7 @@ class ResearchAgent:
             GitHubScraper(),
             RedditScraper(),
             YouTubeScraper(),
+            TranscriptScraper(),
         ]
 
         logger.info("Research Agent initialized with %d scrapers", len(self.scrapers))

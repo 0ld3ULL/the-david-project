@@ -130,6 +130,28 @@ goals:
     priority: high
     action: alert
 
+  - id: deva_gamedev
+    name: "DEVA game development knowledge"
+    description: "Unity tips, game dev patterns, AI-assisted development techniques relevant to Amphitheatre and DEVA"
+    keywords:
+      - Unity
+      - game dev
+      - C#
+      - shader
+      - multiplayer
+      - networking
+      - Photon
+      - AI coding
+      - Claude Code
+      - voice assistant
+      - code generation
+      - game design
+      - procedural generation
+      - ECS
+      - URP
+    priority: high
+    action: knowledge
+
 # Sources configuration
 sources:
   github:
@@ -147,8 +169,8 @@ sources:
     channels:
       - "@GodaGo"  # AI agent tutorials
       - "@AIJason"  # Agent development
-      - "@MatthewBerman"  # AI news
-      - "@DavidShapiroAI"  # Autonomous agents
+      - "@matthew_berman"  # AI news (note: underscore)
+      - "@DaveShapiro"  # Autonomous agents
 
   reddit:
     subreddits:
@@ -157,6 +179,18 @@ sources:
       - AutoGPT
       - artificial
       - MachineLearning
+
+  transcripts:
+    youtube_channels:
+      - "@GodaGo"             # AI agent tutorials
+      - "@AIJason"            # Agent development
+      - "@matthew_berman"     # AI news (note: underscore, not camelCase)
+      - "@DaveShapiro"        # Autonomous agents (formerly DavidShapiroAI)
+      - "@IndyDevDan"         # Claude Code / AI coding
+      - "@AllAboutAI"         # AI tools and agents
+    tiktok_accounts: []       # Add TikTok handles when ready
+    max_transcript_length: 15000  # Chars - truncate longer transcripts
+    delay_between_fetches: 5      # Seconds between YouTube transcript fetches
 
   rss:
     feeds:

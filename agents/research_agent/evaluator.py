@@ -89,6 +89,32 @@ Return ONLY valid JSON:
 
 Actions: content (8+), knowledge (5-7), ignore (1-4)"""
 
+TRANSCRIPT_SUMMARY_PROMPT = """You are analyzing a video transcript for actionable insights.
+
+The video is: {title}
+URL: {url}
+
+## TRANSCRIPT:
+{content}
+
+## INSTRUCTIONS:
+Extract the KEY INSIGHTS from this transcript. Focus on:
+1. Specific techniques, tools, or patterns mentioned
+2. Code examples or architecture decisions
+3. New releases, updates, or announcements
+4. Actionable advice or best practices
+5. Anything related to: AI agents, Claude/Anthropic, Unity game dev, voice assistants, autonomous systems, surveillance/privacy, CBDCs, digital ID, crypto
+
+## OUTPUT FORMAT:
+Write a structured summary (max 500 words):
+
+**TOPIC:** One-line topic description
+**KEY INSIGHTS:**
+- Bullet points of the most important takeaways
+**TOOLS/TECH MENTIONED:** List any specific tools, libraries, APIs
+**ACTIONABLE FOR US:** What could we apply to our projects (Clawdbot, DEVA, Amphitheatre, David Flip)?
+**RELEVANCE:** Rate 1-10 how relevant this is to AI agents, game dev, or surveillance/privacy topics"""
+
 
 class GoalEvaluator:
     """Uses LLM to evaluate items against configured goals."""
@@ -119,6 +145,41 @@ class GoalEvaluator:
             lines.append("")
         return "\n".join(lines)
 
+    async def summarize_transcript(self, item: ResearchItem) -> str:
+        """
+        Summarize a long transcript before evaluation.
+        First pass: Haiku summarizes transcript into ~500 word structured summary.
+        Returns the summary text, or falls back to truncated content.
+        """
+        prompt = TRANSCRIPT_SUMMARY_PROMPT.format(
+            title=item.title,
+            url=item.url,
+            content=item.content[:15000]  # Cap input to avoid token overflow
+        )
+
+        try:
+            model = self.router.models.get(ModelTier.CHEAP)
+            if not model:
+                logger.warning("No cheap model for transcript summarization")
+                return item.content[:1500]
+
+            response = await self.router.invoke(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=800
+            )
+
+            summary = response.get("content", "").strip()
+            if summary:
+                logger.info(f"Summarized transcript: {item.title[:50]} ({len(item.content)} -> {len(summary)} chars)")
+                return summary
+
+        except Exception as e:
+            logger.error(f"Transcript summarization failed for {item.title}: {e}")
+
+        # Fallback: just truncate
+        return item.content[:1500]
+
     async def evaluate(self, item: ResearchItem) -> ResearchItem:
         """Evaluate a single item against goals."""
         # Pre-filter: Check if any keywords match
@@ -130,13 +191,20 @@ class GoalEvaluator:
             item.reasoning = "No keyword matches"
             return item
 
+        # For transcripts with long content, summarize first (two-pass evaluation)
+        eval_content = item.content
+        if item.source == "transcript" and len(item.content) > 2000:
+            eval_content = await self.summarize_transcript(item)
+            # Store the summary on the item for later use
+            item.summary = eval_content
+
         # Use LLM for evaluation
         prompt = EVALUATION_PROMPT.format(
             goals_description=self._format_goals_description(),
             source=item.source,
             title=item.title,
             url=item.url,
-            content=item.content[:1500]  # Limit content to save tokens
+            content=eval_content[:1500]  # Limit content to save tokens
         )
 
         try:
