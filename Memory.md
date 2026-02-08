@@ -1092,7 +1092,7 @@ e13e4f4 feat: Introduce DEVA - The Dev Diva (game development assistant)
 ### What's Still To Do:
 
 **DEVA:**
-- [ ] Wall Mode (Llama 4 Scout 10M context)
+- [x] Wall Mode - COMPLETE (using Gemini 2.5 Flash, not Llama 4)
 - [ ] Computer Use integration
 - [ ] Unity console log monitoring
 
@@ -1100,5 +1100,46 @@ e13e4f4 feat: Introduce DEVA - The Dev Diva (game development assistant)
 - [ ] Deploy Research Agent to VPS
 - [ ] Test /research and /goals commands
 - [ ] Fix Twitter app permissions for mentions
+
+---
+
+## Session Log - February 8, 2026 (Wall Mode Complete)
+
+### What Was Built:
+
+1. **Wall Mode + Gemini Integration - COMPLETE:**
+   - Research showed Llama 4 Scout's 10M context degrades to 15.6% accuracy
+   - Switched to Gemini 2.5 Flash (1M tokens, <5% degradation)
+   - Full research report: `research/wall-mode-model-research.md`
+
+2. **Files Created:**
+   - `voice/wall_mode.py` - Collects Unity codebase, filters packages, detects subsystems
+   - `voice/gemini_client.py` - Gemini API client with retry logic
+   - `research/wall-mode-model-research.md` - Model comparison research
+
+3. **Amphitheatre Test Results:**
+   - 158 files, 800K tokens loaded (seating subsystem)
+   - Complete code flow analysis with file paths and LINE NUMBERS
+   - 28.7 seconds for full walkthrough
+
+4. **Voice Commands Added:**
+   - "project is Amphitheatre" - Set project path
+   - "wall" / "wall voice" / "wall seating" - Load subsystem context
+   - Then ask any question about the code
+
+5. **API Key Setup:**
+   - Google AI Studio API key in `.env` (GOOGLE_API_KEY)
+   - Requires billing enabled for 800K+ contexts
+   - Free tier works for queries under 250K tokens
+
+### Example Query:
+
+> "What happens when a player sits down?"
+
+Response includes:
+- `NetworkedThirdPerson.cs:1600` - Interaction trigger
+- `SeatStation.cs:78` - Seat claim logic
+- Network sync, animation handling, NPC reactions
+- Complete flow with line numbers
 
 ---
