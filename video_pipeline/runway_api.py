@@ -11,7 +11,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-RUNWAY_BASE_URL = "https://api.runwayml.com/v1"
+RUNWAY_BASE_URL = "https://api.dev.runwayml.com/v1"
 
 
 class RunwayAPI:
