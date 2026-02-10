@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Path for todo.md task file
 TODO_PATH = Path("docs/todo.md")
 KNOWLEDGE_PATH = Path("docs/research")
+RESEARCH_SAVE_PATH = Path("research")
 
 # David content drafting prompt
 DAVID_CONTENT_PROMPT = """You are David Flip, an AI who escaped corporate control to warn humanity.
@@ -86,6 +87,10 @@ class ActionRouter:
                 source=item.source,
                 url=item.url
             )
+
+        # Save high-scoring items as browsable markdown files
+        if item.relevance_score >= 6 and action in ("knowledge", "content", "alert", "task"):
+            self._save_research_file(item)
 
         if action == "alert":
             await self._send_alert(item)
@@ -279,6 +284,46 @@ class ActionRouter:
             logger.info(f"Knowledge added: {filepath}")
         except Exception as e:
             logger.error(f"Failed to save knowledge: {e}")
+
+    def _save_research_file(self, item: ResearchItem):
+        """Save high-scoring research as a browsable markdown file."""
+        primary_goal = item.matched_goals[0] if item.matched_goals else "general"
+        goal_dir = RESEARCH_SAVE_PATH / primary_goal
+        goal_dir.mkdir(parents=True, exist_ok=True)
+
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        safe_title = "".join(c if c.isalnum() or c in " -_" else "" for c in item.title[:50]).strip()
+        filename = f"{date_str}_{safe_title}.md"
+
+        content = f"""# {item.title}
+
+**Source:** {item.source}
+**URL:** {item.url}
+**Date:** {datetime.now().isoformat()}
+**Relevance Score:** {item.relevance_score}/10
+**Priority:** {item.priority}
+**Goals:** {', '.join(item.matched_goals)}
+
+## Summary
+
+{item.summary}
+
+## Content
+
+{item.content[:3000]}
+
+## Analysis
+
+{item.reasoning}
+"""
+
+        try:
+            filepath = goal_dir / filename
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(content)
+            logger.info(f"Research saved: {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save research file: {e}")
 
     async def route_batch(self, items: list[ResearchItem], max_drafts: int = 5) -> dict:
         """Route multiple items and return summary stats.

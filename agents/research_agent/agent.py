@@ -25,7 +25,8 @@ from .podcast_digest import PodcastDigestGenerator
 from .scrapers import (
     RSSScraper, GitHubScraper, RedditScraper, YouTubeScraper,
     TranscriptScraper, HackerNewsScraper, TwitterScraper,
-    GitHubTrendingScraper, ArXivScraper,
+    GitHubTrendingScraper, ArXivScraper, PerplexityScraper,
+    FirecrawlScraper,
 )
 
 if TYPE_CHECKING:
@@ -94,6 +95,8 @@ class ResearchAgent:
             TwitterScraper(),
             GitHubTrendingScraper(),
             ArXivScraper(),
+            PerplexityScraper(),
+            FirecrawlScraper(),
         ]
 
         # Group scrapers by frequency tier

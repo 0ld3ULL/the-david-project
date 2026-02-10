@@ -252,7 +252,19 @@ class DavidSystem:
         # Remember the interaction
         self.memory.remember_interaction(user_message, response, channel="telegram")
 
+        # Detect goals/facts in background
+        asyncio.create_task(self._detect_goals(user_message))
+
         return response
+
+    async def _detect_goals(self, message: str):
+        """Background task to detect and store goals from conversation."""
+        try:
+            result = await self.memory.detect_and_store_goal(message)
+            if result:
+                logger.info(f"Detected {result['type']}: {result.get('title', '')}")
+        except Exception as e:
+            logger.debug(f"Goal detection error: {e}")
 
     async def _execute_action(self, action_type: str, action_data: dict) -> str:
         """Execute an approved action through the appropriate tool."""

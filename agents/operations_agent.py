@@ -19,6 +19,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+from agents.checkin_log import CheckinLog
+
 logger = logging.getLogger(__name__)
 
 # Directory where dashboard writes action files for polling
@@ -57,6 +59,9 @@ class OperationsAgent:
 
         # Ensure action directory exists
         DASHBOARD_ACTIONS_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Anti-repetition log — prevents duplicate notifications
+        self.checkin_log = CheckinLog()
 
         logger.info(
             f"{self.personality.name} ({self.personality.role}) initialized"
@@ -148,7 +153,12 @@ class OperationsAgent:
             if platforms:
                 notification += f" -> {', '.join(platforms)}"
 
-            await self._notify(notification)
+            await self._notify(
+                notification,
+                topic="schedule",
+                action_type="scheduled",
+                result=notification,
+            )
 
             self.audit_log.log(
                 "operations", "info", "schedule",
@@ -160,7 +170,12 @@ class OperationsAgent:
             error_msg = self.personality.format_notification(
                 "failed", f"Schedule failed: {e}", approval_id
             )
-            await self._notify(error_msg)
+            await self._notify(
+                error_msg,
+                topic="schedule",
+                action_type="failed",
+                result=str(e),
+            )
             self.audit_log.log(
                 "operations", "reject", "schedule",
                 f"Schedule failed #{approval_id}",
@@ -178,7 +193,10 @@ class OperationsAgent:
             await self._notify(
                 self.personality.format_notification(
                     "render", "Rendering video...", approval_id
-                )
+                ),
+                topic="render",
+                action_type="render",
+                result="Rendering video...",
             )
 
             if self.content_agent:
@@ -198,7 +216,12 @@ class OperationsAgent:
                     approval_id,
                 )
 
-            await self._notify(notification)
+            await self._notify(
+                notification,
+                topic="render",
+                action_type="rendered",
+                result=notification,
+            )
 
             self.audit_log.log(
                 "operations", "info", "render",
@@ -210,7 +233,12 @@ class OperationsAgent:
             error_msg = self.personality.format_notification(
                 "failed", f"Render failed: {e}", approval_id
             )
-            await self._notify(error_msg)
+            await self._notify(
+                error_msg,
+                topic="render",
+                action_type="failed",
+                result=str(e),
+            )
             self.audit_log.log(
                 "operations", "reject", "render",
                 f"Render failed #{approval_id}",
@@ -241,7 +269,12 @@ class OperationsAgent:
         notification = self.personality.format_notification(
             "rejected", f"Feedback recorded: {feedback[:100]}", approval_id
         )
-        await self._notify(notification)
+        await self._notify(
+            notification,
+            topic="feedback",
+            action_type="rejected",
+            result=notification,
+        )
 
         self.audit_log.log(
             "operations", "info", "feedback",
@@ -258,16 +291,23 @@ class OperationsAgent:
         result = await self.execute_action(action_type, action_data)
 
         if "failed" in result.lower() or "error" in result.lower():
+            notify_action = "failed"
             notification = self.personality.format_notification(
                 "failed", result, approval_id
             )
         else:
+            notify_action = "executed"
             notification = self.personality.format_notification(
                 "executed", result, approval_id
             )
             self.approval_queue.mark_executed(int(approval_id))
 
-        await self._notify(notification)
+        await self._notify(
+            notification,
+            topic="execute",
+            action_type=notify_action,
+            result=result,
+        )
 
     # ------------------------------------------------------------------
     # Scheduled video execution (registered with ContentScheduler)
@@ -314,7 +354,12 @@ class OperationsAgent:
             notification = self.personality.format_notification(
                 "executed", result_text, approval_id
             )
-            await self._notify(notification)
+            await self._notify(
+                notification,
+                topic="distribute",
+                action_type="executed",
+                result=result_text,
+            )
 
             self.audit_log.log(
                 "operations", "info", "distribute",
@@ -326,7 +371,12 @@ class OperationsAgent:
             error_msg = self.personality.format_notification(
                 "failed", f"Distribution failed: {e}", approval_id
             )
-            await self._notify(error_msg)
+            await self._notify(
+                error_msg,
+                topic="distribute",
+                action_type="failed",
+                result=str(e),
+            )
             self.audit_log.log(
                 "operations", "reject", "distribute",
                 f"Distribution failed #{approval_id}",
@@ -402,10 +452,46 @@ class OperationsAgent:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _notify(self, message: str):
-        """Send a notification via Telegram."""
+    async def _notify(
+        self,
+        message: str,
+        topic: str = "general",
+        action_type: str = "",
+        result: str = "",
+    ):
+        """
+        Send a notification via Telegram with dedup and urgency filtering.
+
+        1. Skip if this exact message was sent recently (checkin log).
+        2. Classify urgency — skip silent progress messages.
+        3. Add urgent prefix when warranted.
+        4. Send via Telegram and record in checkin log.
+        """
+        # --- Dedup check (Feature 1) ---
+        if self.checkin_log.has_recently_sent_message(message):
+            logger.debug(f"Skipping duplicate notification: {message[:80]}")
+            return
+
+        # --- Urgency classification (Feature 2) ---
+        urgency = self.personality.classify_urgency(action_type, result or message)
+        if urgency == "skip":
+            logger.debug(f"Skipping low-urgency notification: {message[:80]}")
+            return
+
+        if urgency == "urgent":
+            message = self.personality.format_urgent(message)
+
+        # --- Send ---
         if self.telegram:
             try:
                 await self.telegram.send_report(message)
             except Exception as e:
                 logger.error(f"Failed to send notification: {e}")
+                return  # don't log if send failed
+
+        # --- Record in checkin log ---
+        self.checkin_log.log_notification(
+            topic=topic,
+            message_summary=message,
+            action_type=action_type,
+        )

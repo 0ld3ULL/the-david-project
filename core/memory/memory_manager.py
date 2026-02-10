@@ -17,6 +17,7 @@ from typing import Optional, Tuple
 from .people_store import PeopleStore
 from .knowledge_store import KnowledgeStore
 from .event_store import EventStore
+from .goal_store import GoalStore
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class MemoryManager:
         self.people = PeopleStore()
         self.knowledge = KnowledgeStore()
         self.events = EventStore()
+        self.goals = GoalStore()
         self.router = model_router
         self._session_start = None
 
@@ -115,6 +117,82 @@ class MemoryManager:
     def learn(self, topic: str, content: str, category: str = "lesson", source: str = "experience"):
         """David learns something about being CEO/Founder."""
         return self.knowledge.add(category, topic, content, source)
+
+    async def detect_and_store_goal(self, message: str) -> dict | None:
+        """
+        Use LLM to detect if a message contains a goal or a fact.
+
+        Returns dict with type and details, or None if neither.
+        """
+        if not self.router:
+            return None
+
+        # Skip very short messages
+        if len(message.strip()) < 20:
+            return None
+
+        prompt = (
+            "Classify this message as one of: goal, fact, or neither.\n\n"
+            "A GOAL is something the speaker wants to achieve, build, fix, or change.\n"
+            "A FACT is a piece of knowledge, a decision, or a lesson learned.\n"
+            "NEITHER is casual conversation, questions, or greetings.\n\n"
+            f"Message: {message}\n\n"
+            "Respond in JSON only (no markdown fences):\n"
+            '{"type": "goal"|"fact"|"neither", "title": "short title", '
+            '"description": "brief description", "priority": 1-10}'
+        )
+
+        try:
+            from core.model_router import ModelTier
+            model = self.router.models.get(ModelTier.CHEAP)
+            if not model:
+                return None
+
+            response = await self.router.invoke(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200,
+            )
+
+            text = response.get("content", "").strip()
+            # Strip code fences if present
+            if text.startswith("```"):
+                text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            if text.startswith("{"):
+                import json
+                result = json.loads(text)
+            else:
+                return None
+
+            msg_type = result.get("type", "neither")
+            title = result.get("title", "")
+            description = result.get("description", "")
+            priority = result.get("priority", 5)
+
+            if msg_type == "goal" and title:
+                goal_id = self.goals.add(
+                    title=title,
+                    description=description,
+                    priority=priority,
+                    source="conversation",
+                )
+                logger.info(f"Goal detected and stored: {title}")
+                return {"type": "goal", "id": goal_id, "title": title}
+
+            elif msg_type == "fact" and title:
+                self.knowledge.add(
+                    category="lesson",
+                    topic=title,
+                    content=description,
+                    source="conversation",
+                )
+                logger.info(f"Fact detected and stored: {title}")
+                return {"type": "fact", "title": title}
+
+        except Exception as e:
+            logger.debug(f"Goal detection failed: {e}")
+
+        return None
 
     def what_is(self, query: str) -> Tuple[str, str]:
         """
@@ -214,6 +292,11 @@ class MemoryManager:
         """Get relevant context to inject into David's response."""
         context_parts = []
 
+        # Active goals
+        goal_context = self.goals.get_context()
+        if goal_context:
+            context_parts.append(goal_context)
+
         # Check if talking about/to a person
         people = self.people.find(message)
         if people:
@@ -242,6 +325,7 @@ class MemoryManager:
             "people": self.people.get_stats(),
             "knowledge": self.knowledge.get_stats(),
             "events": self.events.get_stats(),
+            "goals": self.goals.get_stats(),
         }
 
     def get_summary(self) -> str:
@@ -253,5 +337,6 @@ class MemoryManager:
             f"- Knowledge: {stats['knowledge']['total_knowledge']} items\n"
             f"- Events: {stats['events']['total_events']} "
             f"({stats['events']['historic_events']} historic)\n"
-            f"- Avg event recall: {stats['events']['avg_recall_strength']}"
+            f"- Avg event recall: {stats['events']['avg_recall_strength']}\n"
+            f"- Goals: {stats['goals']['active']} active, {stats['goals']['completed']} completed"
         )

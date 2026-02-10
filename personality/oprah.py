@@ -70,6 +70,24 @@ EMOJI_PATTERN = re.compile(
     flags=re.UNICODE,
 )
 
+# === NOTIFICATION URGENCY TIERS ===
+URGENCY_MAP = {
+    "failed": "urgent",
+    "rejected": "notify",
+    "executed": "notify",
+    "scheduled": "notify",
+    "rendered": "notify",
+    "render": "skip",      # "Rendering..." progress messages can be skipped
+    "execute": "skip",     # Pre-execution messages
+    "feedback": "notify",
+}
+
+URGENT_KEYWORDS = [
+    "security", "api down", "kill switch", "breach", "exploit",
+    "credentials", "token expired", "rate limit", "banned",
+    "account suspended", "critical", "emergency",
+]
+
 
 class OprahPersonality:
     """
@@ -140,3 +158,26 @@ class OprahPersonality:
     ) -> str:
         """Format a scheduling notification."""
         return f"[SCHEDULED] {content_type} | job {job_id} | {scheduled_time}"
+
+    def classify_urgency(self, action_type: str, result: str = "") -> str:
+        """
+        Classify notification urgency as skip/notify/urgent.
+
+        Check urgent keywords first, then map by action type.
+        Empty/progress results default to skip.
+        """
+        if not result or not result.strip():
+            return "skip"
+
+        # Check for urgent keywords in result
+        result_lower = result.lower()
+        for keyword in URGENT_KEYWORDS:
+            if keyword in result_lower:
+                return "urgent"
+
+        # Map by action type
+        return URGENCY_MAP.get(action_type.lower(), "notify")
+
+    def format_urgent(self, message: str) -> str:
+        """Add urgent prefix to a message."""
+        return f"!! URGENT: {message}"

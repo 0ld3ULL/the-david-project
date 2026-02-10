@@ -517,6 +517,33 @@ sources:
     max_results_per_category: 20
     days_back: 3
 
+  # --- Perplexity Sonar Pro (AI-powered web search via OpenRouter) ---
+  perplexity:
+    enabled: true
+    frequency: warm
+    queries:
+      - query: "Latest developments in AI agent frameworks and autonomous coding tools 2024-2025"
+        goal: improve_architecture
+      - query: "New Claude Anthropic features API updates model releases"
+        goal: claude_updates
+      - query: "CBDC digital ID surveillance privacy news latest"
+        goal: david_content
+      - query: "Solana NFT marketplace decentralized commerce news"
+        goal: flipt_relevant
+
+  # --- Firecrawl (full website crawling) ---
+  firecrawl:
+    enabled: true
+    frequency: daily
+    max_pages_per_site: 10
+    target_urls:
+      - url: "https://docs.anthropic.com/en/docs"
+        label: "Anthropic Docs"
+        goal: claude_updates
+      - url: "https://modelcontextprotocol.io/docs"
+        label: "MCP Docs"
+        goal: improve_architecture
+
 # =============================================================
 # FREQUENCY TIERS
 # =============================================================
@@ -537,12 +564,14 @@ frequency_tiers:
       - reddit
       - github
       - github_trending
+      - perplexity
   daily:
     interval_hours: 24
     sources:
       - transcripts
       - youtube
       - arxiv
+      - firecrawl
 
 # =============================================================
 # SCHEDULING

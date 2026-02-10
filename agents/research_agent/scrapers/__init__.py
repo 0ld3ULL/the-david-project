@@ -9,9 +9,12 @@ from .hackernews_scraper import HackerNewsScraper
 from .twitter_scraper import TwitterScraper
 from .github_trending_scraper import GitHubTrendingScraper
 from .arxiv_scraper import ArXivScraper
+from .perplexity_scraper import PerplexityScraper
+from .firecrawl_scraper import FirecrawlScraper
 
 __all__ = [
     "RSSScraper", "GitHubScraper", "RedditScraper", "YouTubeScraper",
     "TranscriptScraper", "HackerNewsScraper", "TwitterScraper",
-    "GitHubTrendingScraper", "ArXivScraper",
+    "GitHubTrendingScraper", "ArXivScraper", "PerplexityScraper",
+    "FirecrawlScraper",
 ]
