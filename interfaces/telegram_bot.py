@@ -1690,17 +1690,25 @@ class TelegramBot:
         try:
             from video_pipeline.cinematic_video import CinematicVideoPipeline, VideoProject, Scene
 
+            from video_pipeline.cinematic_video import generate_script
+
             # Determine if topic is a full script or just a topic
             if len(topic) > 100 or "." in topic:
-                # Treat as script
+                # Treat as full script — use as-is
                 script = topic
                 title = f"david_custom_{int(datetime.now().timestamp())}"
                 scene_desc = "Cyberpunk cityscape at night, neon lights, rain, Blade Runner aesthetic, cinematic"
+                motion = "Slow cinematic camera push forward, subtle movement, atmospheric"
+                mood = "dark"
             else:
-                # Generate simple script from topic
-                script = f"This is David Flip, speaking about {topic}."
+                # Generate script using David's voice via ModelRouter
+                await update.message.reply_text("Writing script in David's voice...")
+                generated = await generate_script(topic)
+                script = generated["script"]
                 title = f"david_{topic.replace(' ', '_').lower()}"
-                scene_desc = f"Cinematic {topic} scene, atmospheric, moody lighting, film grain"
+                scene_desc = generated["scene_description"]
+                motion = generated["motion_prompt"]
+                mood = generated["mood"]
 
             project = VideoProject(
                 title=title,
@@ -1708,11 +1716,11 @@ class TelegramBot:
                 scenes=[
                     Scene(
                         description=scene_desc,
-                        motion_prompt="Slow cinematic camera push forward, subtle movement, atmospheric",
+                        motion_prompt=motion,
                         duration=5,
                     )
                 ],
-                mood="dark",
+                mood=mood,
             )
 
             async def progress_callback(stage: str, data: dict):
@@ -1724,6 +1732,7 @@ class TelegramBot:
                     "generating_voice": "🎙️ Generating voice...",
                     "assembling_video": "🔧 Assembling video...",
                     "generating_music": "🎵 Generating music (browser automation)...",
+                    "selecting_music": "🎵 Selecting music from library...",
                     "final_mix": "🎬 Final mix...",
                     "complete": "✅ Complete!",
                     "failed": f"❌ Failed: {data.get('error', 'Unknown error')}",
@@ -1738,7 +1747,7 @@ class TelegramBot:
             final_path = await pipeline.create_video(
                 project,
                 on_progress=progress_callback,
-                use_browser_music=True,
+                use_browser_music=False,
                 music_prompt="dark cyberpunk ambient cinematic",
             )
 

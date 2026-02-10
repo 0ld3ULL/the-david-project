@@ -19,12 +19,9 @@ Human only approves final output.
 
 import asyncio
 import logging
-import os
-import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Awaitable, Callable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +33,7 @@ class Scene:
     motion_prompt: str  # Motion description for animation
     duration: int = 5  # Scene duration in seconds
     image_path: Optional[str] = None
+    image_url: Optional[str] = None  # Leonardo hosted URL (Runway needs this)
     video_path: Optional[str] = None
 
 
@@ -87,7 +85,7 @@ class CinematicVideoPipeline:
         self,
         project: VideoProject,
         on_progress: Optional[Callable[[str, dict], None]] = None,
-        use_browser_music: bool = True,
+        use_browser_music: bool = False,
         music_prompt: Optional[str] = None,
     ) -> str:
         """
@@ -112,52 +110,52 @@ class CinematicVideoPipeline:
         try:
             # Stage 1: Generate scene images
             if on_progress:
-                on_progress("generating_images", {"total": len(project.scenes)})
+                await on_progress("generating_images", {"total": len(project.scenes)})
             await self._generate_images(project, project_dir, on_progress)
 
             # Stage 2: Animate scenes
             if on_progress:
-                on_progress("animating_scenes", {"total": len(project.scenes)})
+                await on_progress("animating_scenes", {"total": len(project.scenes)})
             await self._animate_scenes(project, project_dir, on_progress)
 
             # Stage 3: Generate voiceover
             if on_progress:
-                on_progress("generating_voice", {"script_length": len(project.voiceover_script)})
+                await on_progress("generating_voice", {"script_length": len(project.voiceover_script)})
             await self._generate_voice(project, project_dir)
 
             # Stage 4: Assemble video (scenes + voice)
             if on_progress:
-                on_progress("assembling_video", {})
+                await on_progress("assembling_video", {})
             assembled_path = await self._assemble_video(project, project_dir)
 
-            # Stage 5: Generate music (browser automation)
+            # Stage 5: Generate music
             if use_browser_music:
                 if on_progress:
-                    on_progress("generating_music", {"method": "browser_automation"})
+                    await on_progress("generating_music", {"method": "browser_automation"})
                 await self._generate_music_browser(project, assembled_path, music_prompt)
             else:
                 # Use pre-selected music from library
                 if on_progress:
-                    on_progress("selecting_music", {"method": "library"})
+                    await on_progress("selecting_music", {"method": "library"})
                 self._select_music_from_library(project)
 
             # Stage 6: Final mix
             if on_progress:
-                on_progress("final_mix", {})
+                await on_progress("final_mix", {})
             final_path = await self._final_mix(project, project_dir)
 
             project.final_video_path = final_path
             logger.info(f"Video complete: {final_path}")
 
             if on_progress:
-                on_progress("complete", {"video_path": final_path})
+                await on_progress("complete", {"video_path": final_path})
 
             return final_path
 
         except Exception as e:
             logger.error(f"Video creation failed: {e}")
             if on_progress:
-                on_progress("failed", {"error": str(e)})
+                await on_progress("failed", {"error": str(e)})
             raise
 
     async def _generate_images(
@@ -173,7 +171,7 @@ class CinematicVideoPipeline:
             logger.info(f"Generating image {i+1}/{len(project.scenes)}: {scene.description[:50]}...")
 
             if on_progress:
-                on_progress("generating_image", {"scene": i + 1, "total": len(project.scenes)})
+                await on_progress("generating_image", {"scene": i + 1, "total": len(project.scenes)})
 
             result = await leonardo.generate_image(
                 prompt=scene.description,
@@ -181,7 +179,8 @@ class CinematicVideoPipeline:
                 style="CINEMATIC",
             )
 
-            # Download and save image
+            # Store hosted URL (Runway needs this) and download locally
+            scene.image_url = result["image_url"]
             image_data = await leonardo.download_image(result["image_url"])
             image_path = project_dir / f"scene_{i+1:02d}.png"
             image_path.write_bytes(image_data)
@@ -199,20 +198,16 @@ class CinematicVideoPipeline:
         runway = self._get_runway()
 
         for i, scene in enumerate(project.scenes):
-            if not scene.image_path:
-                raise RuntimeError(f"Scene {i+1} has no image")
+            if not scene.image_url:
+                raise RuntimeError(f"Scene {i+1} has no image URL")
 
             logger.info(f"Animating scene {i+1}/{len(project.scenes)}: {scene.motion_prompt[:50]}...")
 
             if on_progress:
-                on_progress("animating_scene", {"scene": i + 1, "total": len(project.scenes)})
-
-            # Upload image and get URL (Runway needs URL)
-            # For now, assume image is accessible or use a temp hosting solution
-            # TODO: Implement image upload to get URL
+                await on_progress("animating_scene", {"scene": i + 1, "total": len(project.scenes)})
 
             result = await runway.animate_image(
-                image_url=scene.image_path,  # May need to be a URL
+                image_url=scene.image_url,
                 motion_prompt=scene.motion_prompt,
                 duration=scene.duration,
             )
@@ -257,29 +252,29 @@ class CinematicVideoPipeline:
 
         assembled_path = project_dir / "assembled.mp4"
 
-        # Concatenate videos
-        subprocess.run([
+        # Concatenate videos (async to avoid blocking event loop)
+        await self._run_ffmpeg(
             "ffmpeg", "-y",
             "-f", "concat",
             "-safe", "0",
             "-i", str(concat_path),
             "-c", "copy",
             str(assembled_path),
-        ], check=True, capture_output=True)
+        )
 
-        # Add voiceover
+        # Add voiceover as sole audio track (Runway output has no audio)
         with_voice_path = project_dir / "with_voice.mp4"
-        subprocess.run([
+        await self._run_ffmpeg(
             "ffmpeg", "-y",
             "-i", str(assembled_path),
             "-i", project.voice_path,
-            "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest[out]",
             "-map", "0:v",
-            "-map", "[out]",
+            "-map", "1:a",
             "-c:v", "copy",
             "-c:a", "aac",
+            "-shortest",
             str(with_voice_path),
-        ], check=True, capture_output=True)
+        )
 
         logger.info(f"Assembled video: {with_voice_path}")
         return str(with_voice_path)
@@ -308,9 +303,9 @@ class CinematicVideoPipeline:
 
     def _select_music_from_library(self, project: VideoProject):
         """Select music from pre-curated library based on mood."""
-        from video_pipeline.music_library import get_music_for_mood
+        from video_pipeline.music_library import MusicLibrary
 
-        track = get_music_for_mood(project.mood)
+        track = MusicLibrary().get_track(project.mood)
         if track:
             project.music_path = track
             logger.info(f"Selected music from library: {track}")
@@ -325,8 +320,8 @@ class CinematicVideoPipeline:
         video_with_voice = project_dir / "with_voice.mp4"
 
         if project.music_path:
-            # Mix in music
-            subprocess.run([
+            # Mix in music (async to avoid blocking event loop)
+            await self._run_ffmpeg(
                 "ffmpeg", "-y",
                 "-i", str(video_with_voice),
                 "-i", project.music_path,
@@ -338,7 +333,7 @@ class CinematicVideoPipeline:
                 "-c:a", "aac",
                 "-b:a", "192k",
                 str(final_path),
-            ], check=True, capture_output=True)
+            )
         else:
             # Just copy video with voice
             import shutil
@@ -346,6 +341,96 @@ class CinematicVideoPipeline:
 
         logger.info(f"Final video: {final_path}")
         return str(final_path)
+
+    async def _run_ffmpeg(self, *cmd: str):
+        """Run FFmpeg asynchronously to avoid blocking the event loop."""
+        logger.info(f"Running FFmpeg: {' '.join(cmd[:6])}...")
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"FFmpeg failed (exit {proc.returncode}): {stderr.decode()}")
+
+
+async def generate_script(topic: str, style: str = "cyberpunk") -> dict:
+    """
+    Generate a video script using ModelRouter + David's video_script personality.
+
+    Returns:
+        dict with 'script', 'scene_description', 'motion_prompt', 'mood'
+    """
+    from core.model_router import ModelRouter
+    from personality.david_flip import DavidFlipPersonality
+
+    personality = DavidFlipPersonality()
+    system_prompt = personality.get_system_prompt("video_script")
+
+    router = ModelRouter()
+    model = router.select_model("content")
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": (
+            f"Write a cinematic video script about: {topic}\n"
+            f"Visual style: {style}\n\n"
+            f"Return EXACTLY this format (no extra text):\n"
+            f"SCRIPT: <your voiceover script>\n"
+            f"SCENE: <visual description for AI image generation>\n"
+            f"MOTION: <camera/motion description for animation>\n"
+            f"MOOD: <one word mood for music selection>"
+        )},
+    ]
+
+    result = await router.invoke(model, messages, max_tokens=1024)
+    text = result.get("content", "")
+
+    # Parse structured response
+    script = ""
+    scene_desc = f"Cinematic {style} scene, {topic}, atmospheric, moody lighting, film grain"
+    motion = "Slow cinematic camera push forward, subtle movement, atmospheric"
+    mood = "dark"
+
+    for line in text.split("\n"):
+        line = line.strip()
+        if line.startswith("SCRIPT:"):
+            script = line[7:].strip()
+        elif line.startswith("SCENE:"):
+            scene_desc = line[6:].strip()
+        elif line.startswith("MOTION:"):
+            motion = line[7:].strip()
+        elif line.startswith("MOOD:"):
+            mood = line[5:].strip().lower()
+
+    # If SCRIPT: was on its own line, grab everything after it until the next tag
+    if not script:
+        in_script = False
+        script_lines = []
+        for line in text.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("SCRIPT:"):
+                in_script = True
+                remainder = stripped[7:].strip()
+                if remainder:
+                    script_lines.append(remainder)
+            elif stripped.startswith(("SCENE:", "MOTION:", "MOOD:")):
+                in_script = False
+            elif in_script:
+                script_lines.append(stripped)
+        script = " ".join(script_lines)
+
+    # Final fallback if parsing failed completely
+    if not script:
+        script = text.strip()
+
+    return {
+        "script": script,
+        "scene_description": scene_desc,
+        "motion_prompt": motion,
+        "mood": mood,
+    }
 
 
 async def create_video_from_topic(
@@ -366,19 +451,18 @@ async def create_video_from_topic(
     Returns:
         Path to final video
     """
-    # TODO: Implement Claude script generation
-    # For now, return a simple project structure
+    generated = await generate_script(topic, style)
 
     project = VideoProject(
         title=f"david_flip_{topic.replace(' ', '_')}",
-        voiceover_script=f"This is a video about {topic}.",
+        voiceover_script=generated["script"],
         scenes=[
             Scene(
-                description=f"{style} scene representing {topic}",
-                motion_prompt="Slow cinematic camera push forward",
+                description=generated["scene_description"],
+                motion_prompt=generated["motion_prompt"],
             )
         ],
-        mood="dark" if style == "cyberpunk" else "neutral",
+        mood=generated["mood"],
     )
 
     pipeline = CinematicVideoPipeline()
