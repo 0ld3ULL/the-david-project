@@ -33,6 +33,46 @@ D:\Claude_Code\Projects\Clawdbot
 
 ---
 
+## THE FOUNDATION — What We Are Building and Why
+
+**This section is permanent context. Every AI working on this project must understand this.**
+
+### David (the human, Jono/0ld3ULL) Has Two Missions:
+
+**1. Become an AI Influencer**
+Build a real following specialising in AI, AI agents, and AI Personalities (David Flip, Deva, Oprah, Echo). The end goal is becoming a genuine influencer who can do live podcasts, interviews, and be a recognised voice in the AI space. Not a fake "guru" — a builder who shows what he's building.
+
+**2. Run FLIPT — A Fully Decentralised Alternative**
+FLIPT has three parts:
+- **a) Marketplace** — Decentralised secondhand marketplace (eBay-like, crypto-native, Solana). Perpetual seller royalties.
+- **b) DEX** — Decentralised exchange
+- **c) Social Network** — Decentralised social platform
+
+All three are fully decentralised. **Node Owners** provide the infrastructure and earn money from the FLIPT system, making it worth their while to run a node. This IS the decentralisation — no central servers, no single point of failure.
+
+### The Philosophy
+**Freedom-oriented. Not anti-government. Not hostile.**
+
+"Just leave us be." FLIPT is a way to step back and have alternatives for humanity. The position is:
+- No one should ever be able to **shut you off**
+- No one should be able to **debank** you
+- No one should be able to **de-socialise** you
+- No one should be able to **prevent you from purchasing** something just because someone decided you didn't follow their rules
+
+This is NOT about fighting governments. It's about having alternatives that can't be taken away. When they ban something decentralised, they just ban themselves from it.
+
+### AI Personalities — Not Assistants, PARTNERS
+The word is deliberate. David Flip, Deva, Oprah, Echo — these are AI **Partners**, not assistants. The research we do, the content we build, the systems we create — all of it is building toward AI that works WITH you as a genuine collaborator, not a tool you bark orders at.
+
+### The Naming History — OpenClaw vs Our Project
+- **OpenClaw** (formerly Clawdbot, briefly Moltbot) is an open-source AI agent project. The original name was "Clawdbot" (lobster claw + bot — lobster is their logo). Anthropic threatened to sue because it sounded too close to "Claude" (claude-bot). They briefly renamed to "Moltbot" (lobster molting to grow). The community settled on **OpenClaw** as the final name.
+- **Our project** is called "Clawdbot" as a placeholder name (suggested by Claude). We do NOT use OpenClaw directly. Claude advised taking the useful architectural parts and separating away from the parts that made it dangerous for prompt-injection and other attacks. Our project is safety-first, built from scratch with human-in-the-loop at every step.
+
+### Supadata API Key
+`sd_d826ccdab9a7a682d5716084f28d4d73` — For TikTok/YouTube transcript extraction. Endpoint: `https://api.supadata.ai/v1/transcript` (unified, works for YouTube and TikTok).
+
+---
+
 ## Agent Teams (Claude Code Feature)
 
 **Enabled:** February 2026. Use autonomously when it will produce better results.
@@ -1436,5 +1476,94 @@ David Flip creates content → Approval Queue → Dashboard review
 - Flask dev server runs at 127.0.0.1:5000 with auto-reload
 - `personality/oprah.py` follows same pattern as `personality/david_flip.py` but lighter (no character arc, just operational identity)
 - `agents/operations_agent.py` is a standalone class — currently reads from `data/dashboard_actions/` but the real dashboard writes to `data/content_feedback/`. When wiring Oprah into main.py, either update the directory or keep main.py's poll method as the bridge.
+
+---
+
+## Session Log — February 10, 2026 (Claude Memory System)
+
+### The Problem:
+Claude Code loses ALL memory between sessions. Memory.md is the only bridge, but it's 1400+ lines and growing. Massive amounts of context discussed daily gets lost — decisions, naming history, philosophical foundations, architectural reasoning. The human (Jono) remembers it poorly, Claude remembers none of it.
+
+### What Was Built:
+
+**Claude Memory System** — `claude_memory/` — A persistent memory database for Claude Code sessions, adapted from David Flip's EventStore decay system.
+
+#### Files Created:
+| File | Purpose |
+|------|---------|
+| `claude_memory/__init__.py` | Package init |
+| `claude_memory/memory_db.py` | SQLite database with significance-based decay, FTS5 search, recall boost |
+| `claude_memory/brief_generator.py` | Generates concise `claude_brief.md` from memory DB |
+| `claude_memory/reconcile.py` | Weekly git repo vs memory comparison using Gemini 1M context |
+| `claude_memory/seed.py` | Seeds 41 foundational memories from all conversations |
+| `claude_memory/__main__.py` | CLI entry point for all commands |
+| `claude_brief.md` | Generated session brief (316 lines vs Memory.md's 1480+ lines) |
+| `CLAUDE_MEMORY_GUIDE.md` | Onboarding guide for Claude J, Claude Y, and any new Claude |
+
+#### How It Works:
+
+**Memory Categories:**
+| Category | Decay? | Purpose |
+|----------|--------|---------|
+| `knowledge` | Never | Permanent facts (missions, philosophy, accounts, safety rules) |
+| `current_state` | Never | What's true RIGHT NOW (manually updated when things change) |
+| `decision` | Yes | Why we chose X over Y (significance determines fade rate) |
+| `session` | Yes | What happened on a given day (naturally fades) |
+| `recovered` | Yes | Items recovered by git reconciliation (baseline sig 5) |
+
+**Significance Scale (1-10) — Same as David's EventStore:**
+- 10: Never fades — foundations, philosophy, safety rules
+- 9: Almost never — architecture decisions, agent roster
+- 8: Very slow — major system components, API keys
+- 7: Slow — implementation details that matter
+- 5-6: Medium — session decisions, research findings
+- 3-4: Fast — routine debugging, casual discussions
+- 1-2: Gone in weeks — noise, one-off questions
+
+**Weekly Reconciliation (Gemini Safety Net):**
+1. Wall Mode collector scans entire git repo (all .py, .yaml, .md, .html, .js files)
+2. Memory DB exports all current memories
+3. Both sent to Gemini 2.5 Flash (1M context) for comparison
+4. Gemini identifies: recovered items (pruned but code still exists), gaps (never documented), stale (references deleted code)
+5. Results automatically fed back into memory DB
+
+**CLI Commands:**
+```bash
+python -m claude_memory brief        # Generate claude_brief.md (read this at session start)
+python -m claude_memory status       # Show memory stats
+python -m claude_memory add <cat> <sig> "title" "content"  # Add a memory
+python -m claude_memory decay        # Apply weekly decay manually
+python -m claude_memory reconcile    # Git vs memory check via Gemini
+python -m claude_memory search "query"  # Search memories
+python -m claude_memory seed         # Re-seed foundational knowledge
+```
+
+### Key Context Captured This Session:
+
+1. **OpenClaw Naming History** — Clawdbot (lobster claw + bot) → Moltbot (lobster molting) → OpenClaw (community settled). Anthropic threatened to sue over "Clawdbot" sounding like "Claude-bot". Our project uses "Clawdbot" as a PLACEHOLDER name only.
+
+2. **THE FOUNDATION** added to Memory.md:
+   - Mission 1: AI Influencer (podcasts, AI Personalities, real following)
+   - Mission 2: FLIPT (Marketplace + DEX + Social Network, fully decentralised)
+   - Philosophy: Freedom-oriented, not hostile. Alternatives that can't be taken away.
+   - AI Partners, not assistants — deliberate word choice
+
+3. **Three Video Transcripts Fetched:**
+   - YouTube (cod50CWlZeU): OpenClaw setup guide — VPS, model switching, "living files" theory
+   - TikTok (@alec.automations): Clawbot cost problem, Kimi 2.5 from Moonshot as cheap alternative
+   - TikTok (@zachdoeslife_): 5 best MCP servers for Claude Code
+   - Supadata API endpoint is `/v1/transcript` (unified), NOT `/v1/tiktok/transcript`
+
+### Seeded Memories (41 total):
+- 19 knowledge (permanent) — missions, philosophy, accounts, systems, API keys
+- 5 current_state — project phase, Oprah wiring status, research deployment
+- 8 decisions — OpenClaw separation, Gemini for Wall Mode, dual rubrics, trigger words
+- 9 session summaries — Feb 5-9 work history
+
+### For Next Session:
+- [ ] Run `python -m claude_memory brief` at session start (or set up as hook)
+- [ ] Read `claude_brief.md` instead of full Memory.md for faster context loading
+- [ ] After meaningful discussions, add new memories via CLI
+- [ ] Run `python -m claude_memory reconcile` once per week (needs GOOGLE_API_KEY in .env)
 
 ---
