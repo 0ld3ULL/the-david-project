@@ -319,6 +319,33 @@ Core listing system, categories, multi-image galleries, search/filters, product 
 9. Encrypted credentials - AES, key in env var only
 10. Prompt injection defense - all external content tagged + scanned
 
+### Git Guard — TOTP-Protected Push (Claude D Security)
+
+**Problem:** David's laptop has DEVA (voice AI). If DEVA gets prompt injected, attacker could push malicious code via Claude D's git credentials.
+
+**Solution:** All git pushes require TOTP approval via Telegram.
+
+**Flow:**
+1. Claude D commits code locally
+2. Claude D calls `git_guard.request_push()` instead of raw `git push`
+3. You get Telegram notification with push summary
+4. You approve with `/authpush <code>` (Google Authenticator)
+5. Push executes (5-minute approval window)
+
+**Commands:**
+| Command | Purpose |
+|---------|---------|
+| `/authpush <code>` | Approve pending push with TOTP |
+| `/diffpush` | View diff of pending push |
+| `/cancelpush` | Cancel pending push |
+| `/pushstatus` | Check GitGuard status |
+
+**Files:**
+- `security/git_guard.py` — TOTP wrapper for git push
+- `data/pending_push.json` — Stores pending push request
+
+**Key Point:** GitHub PAT can live on the laptop, but push is gated by TOTP code from YOUR phone. Even if laptop is fully compromised, attacker cannot push without the code.
+
 ---
 
 ## Agent Architecture

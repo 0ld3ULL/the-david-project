@@ -31,6 +31,7 @@ from core.token_budget import TokenBudgetManager
 from core.audit_log import AuditLog
 from core.scheduler import ContentScheduler
 from security.two_factor_auth import TwoFactorAuth
+from security.git_guard import GitGuard
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,8 @@ class TelegramBot:
                  memory_manager: Any = None,
                  content_agent: Any = None,
                  interview_agent: Any = None,
-                 scheduler: Any = None):
+                 scheduler: Any = None,
+                 git_guard: Any = None):
         """
         Args:
             on_command: Async callback(command: str, args: str) -> str
@@ -58,6 +60,7 @@ class TelegramBot:
             content_agent: Optional ContentAgent for /videogen and /themes commands.
             interview_agent: Optional InterviewAgent for /interview commands.
             scheduler: Optional ContentScheduler for /schedule command.
+            git_guard: Optional GitGuard for /authpush commands.
         """
         self.token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         # Support multiple operator IDs (comma-separated in env)
@@ -78,6 +81,7 @@ class TelegramBot:
         self.content_agent = content_agent
         self.interview_agent = interview_agent
         self.scheduler = scheduler
+        self.git_guard = git_guard
         self.app: Application | None = None
         self.two_fa = TwoFactorAuth(session_duration_minutes=60)  # 1 hour sessions
         self._active_interview_id = None  # For file upload routing
@@ -159,6 +163,12 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("auth", self.cmd_auth))
         self.app.add_handler(CommandHandler("logout", self.cmd_logout))
         self.app.add_handler(CommandHandler("setup2fa", self.cmd_setup_2fa))
+
+        # Git Guard commands (push approval)
+        self.app.add_handler(CommandHandler("authpush", self.cmd_authpush))
+        self.app.add_handler(CommandHandler("diffpush", self.cmd_diffpush))
+        self.app.add_handler(CommandHandler("cancelpush", self.cmd_cancelpush))
+        self.app.add_handler(CommandHandler("pushstatus", self.cmd_pushstatus))
 
         # Approval callbacks (includes video distribute actions)
         self.app.add_handler(CallbackQueryHandler(
@@ -282,6 +292,11 @@ class TelegramBot:
             "/auth <code> - Enter 2FA code\n"
             "/logout - End authenticated session\n"
             "/setup2fa - Set up two-factor auth\n\n"
+            "**Git Guard (Claude D):**\n"
+            "/authpush <code> - Approve pending push\n"
+            "/diffpush - View pending push diff\n"
+            "/cancelpush - Cancel pending push\n"
+            "/pushstatus - Check push status\n\n"
             "Or just type a message to talk to the agent.",
             parse_mode="Markdown"
         )
@@ -390,6 +405,118 @@ class TelegramBot:
             parse_mode="Markdown"
         )
         self.audit.log("master", "info", "2fa", "2FA setup initiated - new secret generated")
+
+    # --- Git Guard Commands (Push Approval) ---
+
+    async def cmd_authpush(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Approve a pending git push with TOTP code."""
+        if not self._is_operator(update):
+            return
+
+        if not self.git_guard:
+            await update.message.reply_text(
+                "GitGuard not configured.\n"
+                "This command is for Claude D on the laptop."
+            )
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "Usage: /authpush <6-digit-code>\n\n"
+                "Enter the code from your authenticator app to approve the pending push."
+            )
+            return
+
+        code = context.args[0].strip()
+
+        success, message = self.git_guard.verify_and_approve(code)
+
+        if success:
+            await update.message.reply_text(f"{message}\n\nPush executing...")
+            self.audit.log("master", "info", "git_guard", "Push approved via TOTP")
+
+            # Execute the push
+            push_success, push_message = await self.git_guard.execute_approved_push()
+            await update.message.reply_text(push_message, parse_mode="Markdown")
+
+            if push_success:
+                self.audit.log("master", "info", "git_guard", "Push executed successfully")
+            else:
+                self.audit.log("master", "error", "git_guard", f"Push failed: {push_message}")
+        else:
+            await update.message.reply_text(message)
+            self.audit.log("master", "warn", "git_guard", f"Push approval failed: {message}")
+
+    async def cmd_diffpush(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """View the diff of a pending push."""
+        if not self._is_operator(update):
+            return
+
+        if not self.git_guard:
+            await update.message.reply_text("GitGuard not configured.")
+            return
+
+        diff = self.git_guard.get_pending_diff(max_lines=50)
+
+        if not diff or diff == "No pending push":
+            await update.message.reply_text("No pending push to show diff for.")
+            return
+
+        # Truncate for Telegram message limit
+        if len(diff) > 3500:
+            diff = diff[:3500] + "\n\n... (truncated)"
+
+        await update.message.reply_text(
+            f"**Pending Push Diff:**\n```\n{diff}\n```\n\n"
+            "Reply `/authpush <code>` to approve or `/cancelpush` to cancel.",
+            parse_mode="Markdown"
+        )
+
+    async def cmd_cancelpush(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Cancel a pending push request."""
+        if not self._is_operator(update):
+            return
+
+        if not self.git_guard:
+            await update.message.reply_text("GitGuard not configured.")
+            return
+
+        result = self.git_guard.cancel_pending_push()
+        await update.message.reply_text(result)
+        self.audit.log("master", "info", "git_guard", "Pending push cancelled by operator")
+
+    async def cmd_pushstatus(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Check GitGuard status."""
+        if not self._is_operator(update):
+            return
+
+        if not self.git_guard:
+            await update.message.reply_text(
+                "**GitGuard Status**\n\n"
+                "Enabled: No (not configured)\n"
+                "This is for Claude D on the laptop.",
+                parse_mode="Markdown"
+            )
+            return
+
+        status = self.git_guard.get_status()
+
+        msg = "**GitGuard Status**\n\n"
+        msg += f"Enabled: {'Yes' if status['enabled'] else 'No'}\n"
+        msg += f"Pending Push: {'Yes' if status['has_pending_push'] else 'No'}\n"
+        msg += f"Push Approved: {'Yes' if status['is_push_approved'] else 'No'}\n"
+
+        if status['approval_expires_in_seconds']:
+            msg += f"Approval Expires: {status['approval_expires_in_seconds']}s\n"
+
+        if status['pending_push']:
+            p = status['pending_push']
+            msg += f"\n**Pending:**\n"
+            msg += f"Repo: {p.get('summary', {}).get('repo_name', 'unknown')}\n"
+            msg += f"Branch: {p.get('branch', 'unknown')}\n"
+            msg += f"Commits: {p.get('summary', {}).get('commit_count', 0)}\n"
+
+        await update.message.reply_text(msg, parse_mode="Markdown")
 
     # --- Research Agent Commands ---
 
