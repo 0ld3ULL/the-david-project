@@ -400,6 +400,9 @@ class DavidSystem:
         # Send startup notification to Telegram
         await self._send_status_notification(online=True)
 
+        # Oprah checks: has David been silent too long? Generate content if needed.
+        await self.oprah.check_content_gaps()
+
         # Keep running
         try:
             while True:

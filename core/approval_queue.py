@@ -194,6 +194,17 @@ class ApprovalQueue:
 
             return stats
 
+    def get_last_executed(self, action_type: str) -> dict | None:
+        """Get the most recently executed action of a given type."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT * FROM approvals
+                   WHERE action_type = ? AND executed_at IS NOT NULL
+                   ORDER BY executed_at DESC LIMIT 1""",
+                (action_type,)
+            ).fetchone()
+            return dict(row) if row else None
+
     def format_preview(self, approval: dict) -> str:
         """Format an approval record for human preview."""
         action_data = json.loads(approval["action_data"])

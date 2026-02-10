@@ -16,7 +16,7 @@ not the scheduler.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from agents.checkin_log import CheckinLog
@@ -515,6 +515,101 @@ class OperationsAgent:
                 pass
 
         return status
+
+    # ------------------------------------------------------------------
+    # Content gap management — Oprah keeps David posting
+    # ------------------------------------------------------------------
+
+    # Max hours of silence before Oprah triggers content generation
+    TWEET_GAP_HOURS = 12
+    # How many filler tweets to generate when filling a gap
+    FILLER_COUNT = 5
+
+    async def check_content_gaps(self):
+        """
+        Check when David last posted. If it's been too long, generate
+        content and ping Jono to approve.
+
+        Called on startup and can be called periodically.
+        """
+        if self.kill_switch.is_active:
+            return
+
+        # Check last executed tweet
+        last_tweet = self.approval_queue.get_last_executed("tweet")
+        hours_since_tweet = self._hours_since(last_tweet)
+
+        # Check if there are already pending tweets waiting for approval
+        pending = self.approval_queue.get_pending()
+        pending_tweets = [p for p in pending if p["action_type"] == "tweet"]
+
+        if pending_tweets:
+            logger.info(
+                f"Content check: {len(pending_tweets)} tweets already pending approval"
+            )
+            # Ping Jono to review if they've been sitting there
+            await self._notify(
+                f"{len(pending_tweets)} tweets waiting for your review!\n\n"
+                f"Open Mission Control to approve:\n"
+                f"http://89.167.24.222:5000/approvals",
+                topic="content_gap",
+                action_type="reminder",
+                result="pending_tweets",
+            )
+            return
+
+        if hours_since_tweet is not None and hours_since_tweet < self.TWEET_GAP_HOURS:
+            logger.info(
+                f"Content check: Last tweet {hours_since_tweet:.1f}h ago — OK"
+            )
+            return
+
+        # Gap detected — generate content
+        gap_msg = (
+            f"No tweets posted in {hours_since_tweet:.0f}h"
+            if hours_since_tweet is not None
+            else "No tweets posted yet"
+        )
+        logger.info(f"Content gap detected: {gap_msg}. Generating {self.FILLER_COUNT} tweets...")
+
+        try:
+            from run_daily_tweets import generate_tweets
+            await generate_tweets(count=self.FILLER_COUNT)
+
+            await self._notify(
+                f"{gap_msg}.\n\n"
+                f"Generated {self.FILLER_COUNT} tweets for review.\n"
+                f"Open Mission Control to approve:\n"
+                f"http://89.167.24.222:5000/approvals",
+                topic="content_gap",
+                action_type="content_generated",
+                result=f"Generated {self.FILLER_COUNT} tweets",
+            )
+
+            self.audit_log.log(
+                "operations", "info", "content_gap",
+                f"{gap_msg} — generated {self.FILLER_COUNT} tweets",
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to generate gap-fill tweets: {e}")
+            await self._notify(
+                f"Tried to generate tweets but failed: {e}",
+                topic="content_gap",
+                action_type="failed",
+                result=str(e),
+            )
+
+    def _hours_since(self, approval_record: dict | None) -> float | None:
+        """Calculate hours since an approval record's executed_at time."""
+        if not approval_record or not approval_record.get("executed_at"):
+            return None
+        try:
+            executed_at = datetime.fromisoformat(approval_record["executed_at"])
+            delta = datetime.now() - executed_at
+            return delta.total_seconds() / 3600
+        except (ValueError, TypeError):
+            return None
 
     # ------------------------------------------------------------------
     # Internal helpers
