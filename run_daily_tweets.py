@@ -88,7 +88,11 @@ def parse_tweets(raw_text: str) -> list[str]:
 
 
 def get_research_findings(max_items: int = 5) -> list[dict]:
-    """Pull top research findings from Echo's research.db."""
+    """Pull top research findings from Echo's research.db.
+
+    Enforces source diversity — max 1 item per domain so we don't
+    end up with 5 tweets all from the same website.
+    """
     if not RESEARCH_DB.exists():
         logger.info("No research.db found — Echo hasn't run yet")
         return []
@@ -99,20 +103,37 @@ def get_research_findings(max_items: int = 5) -> list[dict]:
         cursor = conn.cursor()
 
         # Get recent high-scoring items (last 48h, score >= 6)
+        # Pull more than we need so we can deduplicate by domain
         since = (datetime.now() - timedelta(hours=48)).isoformat()
         cursor.execute("""
             SELECT title, summary, url, relevance_score, source
             FROM research_items
             WHERE scraped_at > ? AND relevance_score >= 6
             ORDER BY relevance_score DESC, scraped_at DESC
-            LIMIT ?
-        """, (since, max_items))
+            LIMIT 30
+        """, (since,))
 
-        findings = [dict(row) for row in cursor.fetchall()]
+        all_findings = [dict(row) for row in cursor.fetchall()]
         conn.close()
 
+        # Deduplicate: max 1 item per domain for source variety
+        seen_domains = set()
+        findings = []
+        for item in all_findings:
+            url = item.get("url", "")
+            domain = url.split("/")[2] if url and "/" in url else "unknown"
+            # Normalize: strip www.
+            domain = domain.replace("www.", "")
+            if domain in seen_domains:
+                continue
+            seen_domains.add(domain)
+            findings.append(item)
+            if len(findings) >= max_items:
+                break
+
         if findings:
-            logger.info(f"Echo found {len(findings)} research items (score >= 6)")
+            domains = [f.get("url", "").split("/")[2].replace("www.", "") for f in findings if f.get("url")]
+            logger.info(f"Echo found {len(findings)} research items from: {', '.join(domains)}")
         else:
             logger.info("No high-scoring research in last 48h")
 
