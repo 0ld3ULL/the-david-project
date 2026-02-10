@@ -1,6 +1,6 @@
 # Claude Session Brief
-*Generated: 2026-02-10 04:36*
-*Memories: 41 total — 41 clear, 0 fuzzy, 0 fading*
+*Generated: 2026-02-10 04:57*
+*Memories: 42 total — 42 clear, 0 fuzzy, 0 fading*
 *Last decay: 2026-02-10T04:36:52.029534*
 *Last reconciliation: never*
 
@@ -240,6 +240,10 @@ youtube-transcript-api v2+ uses instance method: YouTubeTranscriptApi().fetch(vi
 *Tags: transcripts, haiku, summarization*
 
 ## Session History
+
+### Feb 10 — Project Rename + Memory Launcher *****
+Renamed entire project from Clawdbot to The David Project (TDP). 21 files updated: main.py (DavidSystem), telegram_bot, oprah, scheduler, youtube, video_creator, gemini_client, evaluator, research_goals, master.yaml, DEVA-SETUP, Memory.md, etc. GitHub repo renamed to 0ld3ULL/the-david-project. Gemini alignment audit: 141 files, 383K tokens — confirmed clean rename. Created CLAUDE.md (auto-read by Claude Code at session start). Created Launch-Claude.bat desktop shortcut — generates fresh memory brief then opens Claude Code. Only fix from Gemini: added DAVID_DATA_DIR to .env.example.
+*Tags: rename, tdp, claude-md, launcher, gemini-audit*
 
 ### Feb 9 — Oprah Operations Agent Created *****
 Created personality/oprah.py and agents/operations_agent.py.
