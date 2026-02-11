@@ -18,6 +18,12 @@ import anthropic
 
 from voice.tools.file_tools import FileTools, FILE_TOOLS_SCHEMA
 from voice.tools.command_tools import CommandTools, COMMAND_TOOLS_SCHEMA
+from voice.tools.unity_tools import (
+    UnityBridge, UnityBridgeConfig, UNITY_TOOLS_SCHEMA,
+    unity_gameobject, unity_component, unity_scene, unity_editor,
+    unity_find, unity_material, unity_script, unity_asset,
+    unity_console, unity_prefab,
+)
 
 
 @dataclass
@@ -57,6 +63,9 @@ class ToolExecutor:
             timeout=self.config.command_timeout
         )
 
+        # Unity MCP bridge (graceful — only active when MCP server reachable)
+        self.unity_bridge = UnityBridge()
+
         # Build tool registry
         self.tools = self._build_tool_registry()
         self.tool_schemas = FILE_TOOLS_SCHEMA + COMMAND_TOOLS_SCHEMA
@@ -69,7 +78,7 @@ class ToolExecutor:
 
     def _build_tool_registry(self) -> Dict[str, Callable]:
         """Build mapping of tool names to functions."""
-        return {
+        registry = {
             # File tools
             "read_file": self._exec_read_file,
             "write_file": self._exec_write_file,
@@ -81,7 +90,19 @@ class ToolExecutor:
             "run_command": self._exec_run_command,
             "git_status": self._exec_git_status,
             "git_diff": self._exec_git_diff,
+            # Unity tools (MCP bridge)
+            "unity_gameobject": self._exec_unity_gameobject,
+            "unity_component": self._exec_unity_component,
+            "unity_scene": self._exec_unity_scene,
+            "unity_editor": self._exec_unity_editor,
+            "unity_find": self._exec_unity_find,
+            "unity_material": self._exec_unity_material,
+            "unity_script": self._exec_unity_script,
+            "unity_asset": self._exec_unity_asset,
+            "unity_console": self._exec_unity_console,
+            "unity_prefab": self._exec_unity_prefab,
         }
+        return registry
 
     # === Tool Execution Wrappers ===
 
@@ -156,6 +177,38 @@ class ToolExecutor:
             return result.stdout or "(no changes)"
         return f"Error: {result.error or result.stderr}"
 
+    # === Unity Tool Wrappers ===
+
+    def _exec_unity_gameobject(self, action: str, name: str, **kwargs) -> str:
+        return unity_gameobject(self.unity_bridge, action, name, **kwargs)
+
+    def _exec_unity_component(self, action: str, gameobject: str, **kwargs) -> str:
+        return unity_component(self.unity_bridge, action, gameobject, **kwargs)
+
+    def _exec_unity_scene(self, action: str, **kwargs) -> str:
+        return unity_scene(self.unity_bridge, action, **kwargs)
+
+    def _exec_unity_editor(self, action: str) -> str:
+        return unity_editor(self.unity_bridge, action)
+
+    def _exec_unity_find(self, search_type: str, value: str, scene_only: bool = True) -> str:
+        return unity_find(self.unity_bridge, search_type, value, scene_only)
+
+    def _exec_unity_material(self, action: str, name: str, **kwargs) -> str:
+        return unity_material(self.unity_bridge, action, name, **kwargs)
+
+    def _exec_unity_script(self, action: str, name: str, **kwargs) -> str:
+        return unity_script(self.unity_bridge, action, name, **kwargs)
+
+    def _exec_unity_asset(self, action: str, **kwargs) -> str:
+        return unity_asset(self.unity_bridge, action, **kwargs)
+
+    def _exec_unity_console(self, action: str, count: int = None) -> str:
+        return unity_console(self.unity_bridge, action, count)
+
+    def _exec_unity_prefab(self, action: str, name: str, **kwargs) -> str:
+        return unity_prefab(self.unity_bridge, action, name, **kwargs)
+
     # === Main Execution ===
 
     def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> str:
@@ -224,13 +277,18 @@ class ToolExecutor:
         """
         tool_calls = 0
 
+        # Conditionally inject Unity tools when MCP server is reachable
+        active_schemas = list(self.tool_schemas)
+        if self.unity_bridge.is_connected:
+            active_schemas += UNITY_TOOLS_SCHEMA
+
         while tool_calls < self.config.max_tool_calls:
             # Call Claude with tools
             response = client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
                 system=system_prompt,
-                tools=self.tool_schemas,
+                tools=active_schemas,
                 messages=messages
             )
 

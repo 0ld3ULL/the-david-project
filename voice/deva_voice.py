@@ -110,6 +110,12 @@ class VoiceAssistant:
         self._last_full_response = None  # Full response for console (tool mode)
         print(f"  Tools: {len(self.tool_executor.tools)} available")
 
+        # Check Unity MCP connection (non-blocking — just tries once)
+        if self.tool_executor.unity_bridge.is_connected:
+            print(f"  Unity MCP: Connected ({self.tool_executor.unity_bridge._base_url})")
+        else:
+            print(f"  Unity MCP: Not connected (will auto-detect when available)")
+
         # Console Log Watcher for Unity feedback
         self.log_watcher = ConsoleLogWatcher()
         self._setup_log_watcher()
@@ -882,6 +888,40 @@ def main():
             if "clear wall" in text_lower:
                 assistant.wall_context = None
                 response = "Wall context cleared."
+                print(f"DEVA: {response}")
+                assistant.speak(response)
+                continue
+
+            # ==================== UNITY MCP ====================
+            # "Unity connect" / "Unity status" / "Unity disconnect"
+            if any(phrase in text_lower for phrase in ["unity connect", "connect to unity", "connect unity"]):
+                assistant.tool_executor.unity_bridge.invalidate_cache()
+                status = assistant.tool_executor.unity_bridge.get_status()
+                if assistant.tool_executor.unity_bridge.is_connected:
+                    response = "Connected to Unity. I can now control the editor directly."
+                else:
+                    response = "Can't reach Unity MCP server. Make sure Unity is open with the MCP plugin running on port 8080."
+                print(f"[Unity: {status}]")
+                print(f"DEVA: {response}")
+                assistant.speak(response)
+                continue
+
+            if any(phrase in text_lower for phrase in ["unity status", "unity connection", "is unity connected"]):
+                status = assistant.tool_executor.unity_bridge.get_status()
+                connected = assistant.tool_executor.unity_bridge.is_connected
+                if connected:
+                    response = "Unity is connected. All 10 editor tools are available."
+                else:
+                    response = "Unity is not connected. Say 'unity connect' after opening Unity with the MCP plugin."
+                print(f"[Unity: {status}]")
+                print(f"DEVA: {response}")
+                assistant.speak(response)
+                continue
+
+            if any(phrase in text_lower for phrase in ["unity disconnect", "disconnect unity"]):
+                assistant.tool_executor.unity_bridge._health_ok = False
+                assistant.tool_executor.unity_bridge._health_checked_at = time.time() + 9999
+                response = "Disconnected from Unity. Editor tools disabled."
                 print(f"DEVA: {response}")
                 assistant.speak(response)
                 continue
