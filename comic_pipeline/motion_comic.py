@@ -13,7 +13,9 @@ Uses FFmpeg directly (no MoviePy) — follows existing postprocessor.py patterns
 
 import asyncio
 import logging
+import math
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -38,6 +40,9 @@ VIDEO_HEIGHT = 1080
 VIDEO_FPS = 30
 VIDEO_CRF = 20  # Quality (lower = better, 18-23 typical)
 
+# Auto-leveling: music peak must be at least this many dB below narration mean
+MUSIC_HEADROOM_DB = 18
+
 
 class MotionComicGenerator:
     """Creates motion comic videos with Ken Burns effects and narration."""
@@ -52,6 +57,21 @@ class MotionComicGenerator:
             return self._ffmpeg_path
 
         import subprocess
+
+        # Try imageio-ffmpeg bundled binary first (most reliable on Windows)
+        try:
+            import imageio_ffmpeg
+            bundled = imageio_ffmpeg.get_ffmpeg_exe()
+            if bundled:
+                self._ffmpeg_path = bundled
+                self._ffprobe_path = bundled.replace("ffmpeg", "ffprobe")
+                # ffprobe may not exist in imageio bundle — check
+                if not Path(self._ffprobe_path).exists():
+                    self._ffprobe_path = bundled  # fallback, will use ffmpeg -i
+                return bundled
+        except ImportError:
+            pass
+
         search_paths = [
             "ffmpeg",
             os.path.expanduser(
@@ -81,28 +101,22 @@ class MotionComicGenerator:
 
         raise RuntimeError("FFmpeg not found. Please install FFmpeg.")
 
-    def _get_ffprobe(self) -> str:
-        """Get ffprobe path."""
-        if not self._ffprobe_path:
-            self._find_ffmpeg()
-        return self._ffprobe_path
-
-    async def _get_audio_duration(self, audio_path: str) -> float:
-        """Get audio file duration using ffprobe."""
-        ffprobe = self._get_ffprobe()
+    async def _get_media_duration(self, media_path: str) -> float:
+        """Get audio/video duration using ffmpeg -i (works without ffprobe)."""
+        ffmpeg = self._find_ffmpeg()
         proc = await asyncio.create_subprocess_exec(
-            ffprobe,
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            audio_path,
+            ffmpeg, "-i", media_path, "-hide_banner",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            raise RuntimeError(f"ffprobe failed: {stderr.decode()}")
-        return float(stdout.decode().strip())
+        _, stderr = await proc.communicate()
+        # ffmpeg -i prints info to stderr, including "Duration: HH:MM:SS.ss"
+        output = stderr.decode(errors="replace")
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+)\.(\d+)", output)
+        if not match:
+            raise RuntimeError(f"Could not parse duration from: {media_path}")
+        h, m, s, cs = match.groups()
+        return int(h) * 3600 + int(m) * 60 + int(s) + int(cs) / 100
 
     async def generate_narration(
         self,
@@ -151,7 +165,7 @@ class MotionComicGenerator:
                     f.write(audio_data)
 
                 panel.audio_path = audio_path
-                panel.audio_duration = await self._get_audio_duration(audio_path)
+                panel.audio_duration = await self._get_media_duration(audio_path)
                 panel.audio_duration += PADDING_AFTER_AUDIO  # Breathing room
 
                 project.log(
@@ -476,6 +490,96 @@ class MotionComicGenerator:
 
         logger.info(f"Narration track built: {output_path} ({total_duration:.1f}s)")
 
+    async def _measure_volume(self, audio_path: str) -> tuple[float, float]:
+        """
+        Measure mean and max volume of an audio file using ffmpeg volumedetect.
+
+        Returns:
+            (mean_volume_db, max_volume_db) — both as negative floats (dB).
+            e.g. (-20.5, -5.2)
+
+        Raises:
+            RuntimeError: if volumedetect output cannot be parsed.
+        """
+        ffmpeg = self._find_ffmpeg()
+
+        cmd = [
+            ffmpeg, "-i", audio_path,
+            "-af", "volumedetect",
+            "-f", "null",
+            "-",  # discard output, we only need stderr stats
+        ]
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        output = stderr.decode(errors="replace")
+
+        mean_match = re.search(r"mean_volume:\s*([-\d.]+)\s*dB", output)
+        max_match = re.search(r"max_volume:\s*([-\d.]+)\s*dB", output)
+
+        if not mean_match or not max_match:
+            raise RuntimeError(
+                f"Could not parse volumedetect output for {audio_path}. "
+                f"stderr tail: {output[-300:]}"
+            )
+
+        mean_db = float(mean_match.group(1))
+        max_db = float(max_match.group(1))
+        return mean_db, max_db
+
+    async def _auto_level_music(
+        self,
+        narration_path: str,
+        music_path: str,
+    ) -> float:
+        """
+        Calculate a volume multiplier for background music so that
+        its peak is at least MUSIC_HEADROOM_DB below the narration mean.
+
+        Algorithm:
+            1. Measure narration mean_volume (dB) — this is our reference.
+            2. Measure music max_volume (dB) — the loudest moment in the music.
+            3. Target music peak = narration_mean - MUSIC_HEADROOM_DB
+            4. Required adjustment (dB) = target_peak - music_max
+            5. Convert dB adjustment to linear multiplier: 10^(adj/20)
+
+        Returns:
+            A linear volume multiplier (e.g. 0.08). Values >1.0 are clamped to 1.0
+            (we never boost music, only attenuate).
+        """
+        try:
+            narr_mean, narr_max = await self._measure_volume(narration_path)
+            music_mean, music_max = await self._measure_volume(music_path)
+
+            # Target: music peak should sit at (narration mean - headroom)
+            target_music_peak = narr_mean - MUSIC_HEADROOM_DB
+            adjustment_db = target_music_peak - music_max
+            multiplier = math.pow(10.0, adjustment_db / 20.0)
+
+            # Never boost music above unity
+            multiplier = min(multiplier, 1.0)
+
+            logger.info(
+                f"Auto-level music: narration mean={narr_mean:.1f}dB, "
+                f"music max={music_max:.1f}dB, "
+                f"target music peak={target_music_peak:.1f}dB, "
+                f"adjustment={adjustment_db:.1f}dB, "
+                f"multiplier={multiplier:.4f}"
+            )
+
+            return multiplier
+
+        except Exception as e:
+            logger.warning(
+                f"Auto-level failed, falling back to default: {e}"
+            )
+            # If measurement fails, return a safe conservative default
+            return 0.10
+
     async def _final_mix(
         self,
         video_path: str,
@@ -493,22 +597,21 @@ class MotionComicGenerator:
             cmd.extend(["-stream_loop", "-1", "-i", music_path])
 
             # Get video duration for music trim
-            ffprobe = self._get_ffprobe()
-            proc = await asyncio.create_subprocess_exec(
-                ffprobe, "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                video_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            video_duration = await self._get_media_duration(video_path)
+
+            # Auto-level: calculate ideal music volume, then cap with user param
+            auto_volume = await self._auto_level_music(narration_path, music_path)
+            effective_volume = min(auto_volume, music_volume)
+            logger.info(
+                f"Music volume: auto={auto_volume:.4f}, "
+                f"cap={music_volume:.4f}, "
+                f"effective={effective_volume:.4f}"
             )
-            stdout, _ = await proc.communicate()
-            video_duration = float(stdout.decode().strip())
 
             # Mix narration + music
             filter_complex = (
                 f"[1:a]volume=1.0[voice];"
-                f"[2:a]volume={music_volume},atrim=duration={video_duration},"
+                f"[2:a]volume={effective_volume},atrim=duration={video_duration},"
                 f"afade=type=in:duration=2,afade=type=out:start_time={video_duration - 2}:duration=2[music];"
                 f"[voice][music]amix=inputs=2:duration=first[aout]"
             )

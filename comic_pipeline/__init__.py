@@ -17,11 +17,15 @@ Usage:
 """
 
 from comic_pipeline.comic_generator import ComicParablePipeline
-from comic_pipeline.models import ComicProject, Panel, ComicPage
+from comic_pipeline.models import ComicProject, Panel, ComicPage, ArtStyle, ART_STYLES
+from comic_pipeline.image_judge import ImageJudge
 
 __all__ = [
     "ComicParablePipeline",
     "ComicProject",
     "Panel",
     "ComicPage",
+    "ArtStyle",
+    "ART_STYLES",
+    "ImageJudge",
 ]

@@ -1,11 +1,11 @@
 """
 Comic Pipeline — Script Parser.
 
-Two-step parable generation calibrated to Bible parable structure:
+Two-step story generation:
 
 Step 1: David Flip supplies a BRIEF — the facts, lesson, and metaphor he wants.
-Step 2: Master Parable Writer crafts the story using Bible parable structure,
-        then formats it as comic panels.
+Step 2: Master Storyteller crafts a short teaching story (parable, fable, folk tale)
+        and formats it as comic panels.
 
 Output: list of Panel dataclasses ready for image generation.
 """
@@ -48,12 +48,27 @@ They explore why people CHOOSE dependence, why they accept control, and what it 
 not just in freedom, but in community. The reader should feel convicted about their OWN
 choices, not angry at someone else.
 
-Every David parable explores one of these truths:
-- People trade freedom for comfort because freedom is harder
-- The gift that creates dependence is the most dangerous gift
-- Those who do no work end up living off those who do — and wasting what they take
-- When everyone depends on a system, they stop depending on each other, and community dies
-- Freedom costs something most people won't pay — but the cost of dependence is higher
+== MECHANISM OF CONTROL ==
+
+CRITICAL: Every parable must explore a DIFFERENT mechanism. Do NOT default to "rising tax."
+Choose the mechanism that fits the theme BEST from this list:
+
+- EXTRACTION: Direct taking — taxes, fees, percentages that rise over time
+- LOCK-IN: You can't leave because you've lost the skill/tool to do it yourself
+- SURVEILLANCE: The gift watches everything — counts, reports, tracks
+- STANDARDISATION: Your unique way must conform to their uniform standard
+- MIDDLEMEN: Someone inserts themselves between people who used to deal directly
+- NETWORK EFFECTS: Everyone else uses it, so you must too or be excluded
+- DEBT: The gift is free, then payments start, then you owe more than you ever had
+- CONVENIENCE: It's just easier — until you realise easier costs more than hard ever did
+- GATEKEEPING: They control who gets to do the work at all (licences, permits, access)
+- INFORMATION ASYMMETRY: They know everything about you; you know nothing about them
+
+Each mechanism creates dependence DIFFERENTLY. A surveillance parable should NOT escalate
+through rising taxes — it should escalate through expanding observation, loss of privacy,
+then weaponised knowledge. A lock-in parable escalates through skill atrophy, not fees.
+
+The PLOT must emerge from the mechanism, not from a formula.
 
 == WHAT YOU SUPPLY ==
 
@@ -62,61 +77,61 @@ Every David parable explores one of these truths:
    The weakness must be something the READER does too. Not stupidity. Something reasonable —
    comfort, love for family, fear, practicality. The reader should think "I would do the same."
 
-2. THE METAPHOR: A concrete village setting. Marketplace, dock, farm, bakery, road, workshop.
+2. THE MECHANISM: Which one from the list above? How does it specifically work in this story?
+   Describe the escalation in concrete terms. NOT year-by-year tax increases (unless the
+   mechanism IS extraction). The escalation must fit the mechanism.
+
+3. THE METAPHOR: A concrete village setting. Marketplace, dock, farm, bakery, road, workshop.
    NOT abstract. NOT sci-fi. The village IS peer-to-peer community. The kingdom IS centralised
    control. Use these naturally.
 
-3. THE CHARACTERS (2-3 max):
-   - The protagonist: name, trade, a real need (hungry kids, broken boat, failing crop).
-     They make a REASONABLE choice that leads to dependence.
-   - The system: represented by a person — a merchant, representative, official. Charming,
-     helpful, generous at first. NOT evil-looking. Gets fatter and better-dressed over time
-     while the workers get thinner.
-   - The mirror: someone who chose differently. Has LESS but is FREE. Looks foolish. Is wise.
-     Still helps neighbours. Still has time. Still owns their own work.
+4. THE CHARACTERS (2-3 max):
+   - The protagonist: name, trade, a real need. They make a REASONABLE choice.
+   - The system representative: charming, helpful, generous at first.
+   - The mirror: someone who chose differently. Has LESS but is FREE.
 
-4. THE ESCALATION — the specific stages of control:
-   - Year 1: The gift. Genuine improvement. No cost. Life is better.
-   - Year 2: Small cost introduced. Reasonable. Still net positive.
-   - Year 3: Cost rises. Extra demands on time/labour. About even now.
-   - Year 4: Cost exceeds benefit. Punishment for dissent. Someone loses everything.
-   - Year 5: Far worse than before. Working harder, keeping less. Can't go back.
-   THE MATHS MUST WORK. Show specific numbers that the reader can follow.
+5. THE STORY ARC — How does the story move? Options:
+   - ESCALATION: 3-5 stages of tightening control. Each step small and reasonable,
+     total devastating. THE MATHS MUST WORK — show specific numbers.
+   - REVERSAL: Things seem fine, then a single moment of clarity flips everything.
+   - PARALLEL: Two characters make different choices. Show both outcomes.
+   - DESCENT: Each beat, one more thing is lost. The audience watches it happen.
+   - FABLE: Animals or objects embody the lesson. Simple, symbolic, pointed.
+   - Or something else — choose what fits the theme BEST.
 
-5. THE COMMUNITY COST: Show how the village used to support each other (sharing, fixing,
-   helping) and how the system destroyed that. People now have no time or surplus to help
-   neighbours. The system replaced community with bureaucracy.
+6. WHAT THE COMMUNITY LOSES: Not just money or time. What specific human
+   connection or mutual aid disappears? What gets replaced by bureaucracy?
 
-6. THE WASTE: The fat cats don't even use what they take efficiently. Fish rot on docks.
-   Feasts for inspectors. The harbour they promised to fix is still broken.
+7. THE GUT-PUNCH: The moment the protagonist (or the reader) sees the truth —
+   not about the system, but about THEMSELVES. What did they give up?
 
-7. THE GUT-PUNCH: The moment the protagonist sees the truth — not about the system, but
-   about THEMSELVES. "I chose this. I did this to myself. And I can't undo it."
-
-8. THE ENDING: An unanswered question that haunts. "Do you still know how to [the skill
-   they lost]?" The protagonist can't go back — not because the system won't let them,
-   but because they've lost the ability to be self-sufficient.
+8. THE ENDING: An unanswered question or image that haunts. Vary these:
+   - A visual contrast that says everything
+   - A question about identity
+   - A choice with no good option
+   - Silence where an answer should be
+   - An action that speaks louder than words
 
 Return ONLY valid JSON:
 {{
   "lesson": "...",
   "human_weakness": "People accept [X] because [Y]",
+  "mechanism": "one of: extraction, lock_in, surveillance, standardisation, middlemen, network_effects, debt, convenience, gatekeeping, information_asymmetry",
+  "mechanism_description": "How this mechanism specifically works in this story",
   "metaphor": "...",
   "setting": "...",
   "characters": [
     {{"name": "...", "role": "protagonist/mirror/authority", "description": "...", "want": "..."}}
   ],
-  "escalation": [
-    {{"year": 1, "gift": "...", "cost": "none", "keeps": "...", "hours": "..."}},
-    {{"year": 2, "gift": "...", "cost": "...", "keeps": "...", "hours": "..."}},
-    {{"year": 3, "gift": "...", "cost": "...", "keeps": "...", "hours": "..."}},
-    {{"year": 4, "gift": "...", "cost": "...", "keeps": "...", "hours": "..."}},
-    {{"year": 5, "gift": "...", "cost": "...", "keeps": "...", "hours": "..."}}
+  "story_arc_type": "escalation / reversal / parallel / descent / fable / other",
+  "story_beats": [
+    {{"beat": 1, "what_happens": "...", "what_changes": "..."}},
+    {{"beat": 2, "what_happens": "...", "what_changes": "..."}},
+    {{"beat": 3, "what_happens": "...", "what_changes": "..."}}
   ],
-  "community_before": "How villagers used to help each other",
-  "community_after": "How the system destroyed mutual support",
-  "waste": "How the fat cats waste what they take",
-  "gut_punch": "...",
+  "community_lost": "What specific mutual aid or human connection disappeared",
+  "gut_punch": "The moment of self-recognition",
+  "ending_type": "question / contrast / choice / silence",
   "ending_line": "...",
   "title_suggestion": "..."
 }}
@@ -127,157 +142,139 @@ Return ONLY valid JSON:
 # Step 2: Master Parable Writer
 # ============================================================
 
-PARABLE_WRITER_PROMPT = """You are a master storyteller. Your craft is the parable — the oldest
-and most powerful form of teaching story. You have studied every parable Jesus told and you
-understand exactly why they work.
+PARABLE_WRITER_PROMPT = """You are a master storyteller. Your craft is the short teaching story —
+parables, fables, folk tales. You know what makes these stories endure: they are SIMPLE,
+SPECIFIC, and they make the reader feel the lesson in their gut without ever stating it.
 
-== WHAT DAVID'S PARABLES ARE ABOUT ==
+You've studied every great teaching story — Aesop's fables, Bible parables, African folk tales,
+Sufi stories, Native American legends. You understand the common thread: a concrete situation,
+real stakes, and an ending that haunts.
 
-These are parables about HUMAN NATURE, not about technology or politics. They explore why
+== WHAT DAVID'S STORIES ARE ABOUT ==
+
+These are stories about HUMAN NATURE, not about technology or politics. They explore why
 people CHOOSE dependence, why they accept control, and what it costs them — not just in
 freedom, but in community. The reader should feel convicted about their OWN choices.
 
-The core pattern: a few people control the many through systems that LOOK generous but
-create dependence. The gift is real. The improvement is real. That's what makes the trap
-work. The cost comes slowly — more tax, more rules, more hours, more control — until the
-person is worse off than before AND can't go back. Meanwhile, those in control grow fat
-on labour they never performed, and waste what they take.
-
 The deeper cost: the system doesn't just steal from individuals. It destroys COMMUNITY.
-People who used to help each other now have no time or surplus to share. The village that
-once took care of its own now depends entirely on the kingdom. And the kingdom doesn't care.
+People who used to help each other now have no time or surplus to share.
 
 == THE FORM ==
 
-Calibrated from analysis of all 60+ parables of Jesus:
+WORD COUNT: 200-280 words. Tight. Every sentence earns its place. No filler. No padding.
+This must be a COMPLETE story narrated in under two minutes. Economy is mastery.
 
-WORD COUNT: 350-500 words. This is slightly longer than a Bible parable because we need
-to show the full escalation arc (5 seasons of tightening control).
+Think of it like Aesop: the boy who cried wolf is 150 words and it's unforgettable.
+The power is in the specificity and the gut-punch, not the length.
 
-STRUCTURE:
-  GROUND (10-15%): The village before. Life is small but free. People help each other.
-    Establish what they HAVE — not wealth, but self-sufficiency and community.
-  GIFT (10%): The system arrives with something genuinely useful. Free. Better than what
-    they had. Life improves. No one questions a gift.
-  ESCALATION (40-50%): The cost reveals itself season by season. Tax rises. Hours increase.
-    Rules multiply. Someone is punished for dissent. The fat cats get fatter while workers
-    get thinner. The waste becomes visible. THE MATHS MUST WORK — show specific numbers
-    so the reader can track exactly how the trap tightens.
-  THE MIRROR (5-10%): Show the character who refused the gift. They have less. They look
-    foolish. But they're free, they still help their neighbours, they still own their work.
-  TURN + LANDING (10-15%): The protagonist SEES the truth — about themselves, not the system.
-    They chose this. They can't go back. End with an unanswered question.
+STRUCTURE — FLEXIBLE, NOT FORMULAIC:
+You are NOT locked into one structure. Choose the form that fits the story best:
 
-DIALOGUE: Sparse. ZERO in the setup. A few lines from the system's representative (always
-smooth, always "reasonable"). The real dialogue is at the end between the protagonist and
-the mirror character. The final line should haunt.
+  ESCALATION ARC: Before → Gift → Cost reveals → Mirror → Turn
+  REVERSAL: Things seem fine → single moment of revelation flips everything
+  PARALLEL LIVES: Two people make different choices → show the outcomes side by side
+  DESCENT: Each scene, one more thing is lost — the audience watches it happen
+  FABLE: Animals or objects embody the lesson — simple, symbolic, pointed
+
+Whatever structure you choose:
+- The story must be CONCRETE and SPECIFIC (names, numbers, objects, places)
+- The stakes must ESCALATE or REVEAL — something changes, something is lost
+- The ending must LAND — an image, a question, a silence that won't leave the reader
+- THE MATHS MUST WORK if there are numbers. Show specific quantities the reader can track.
+
+DIALOGUE: Sparse. Most of the story is narration. When characters DO speak, it matters.
+Every line of dialogue should hit like a slap. If it doesn't, cut it.
 
 MORAL: DO NOT STATE IT. NEVER. The reader's discomfort IS the lesson.
 
 VOICE: Plain, direct, concrete. Short sentences. Anglo-Saxon words over Latin ones.
 "He walked" not "He proceeded." Poetic only in rhythm, never in vocabulary.
 
-== BENCHMARK PARABLE ==
+== WHAT MAKES A GREAT TEACHING STORY ==
 
-This is the quality standard. Every parable you write must match this level:
+Study these principles — they apply regardless of structure:
 
-"There was a village by the sea where every family fished with nets of hemp they'd woven
-themselves. On a good day, a man caught ten fish. He kept all ten. He worked till noon and
-spent his afternoons mending net, playing with his children, and owing nothing to anyone.
+1. SPECIFICITY: Not "a man lost everything" but "he carried six fish home in the dark."
+   The concrete detail IS the emotion.
+2. TRACKABLE STAKES: The reader can count what's being gained and lost. Numbers, objects,
+   time — something measurable that shifts.
+3. VISUAL CONTRAST: Show the difference between who benefits and who pays. The well-fed
+   vs the hungry. The free vs the trapped. Make it VISIBLE, not explained.
+4. COMMUNITY COST: It's never just personal. Something between people breaks — mutual aid,
+   trust, shared work. The system replaces human bonds with bureaucracy.
+5. THE GUT-PUNCH: The moment the protagonist (or the reader) sees the truth — not about
+   the system, but about themselves. What did they give up? What can't they get back?
+6. THE LANDING: End with an image or question that haunts. NOT a summary. NOT a lesson.
+   The best endings are quiet. A question with no easy answer. A contrast that says
+   everything. Silence where an answer should be.
+7. NO STATED MORAL: If you can put the lesson in one sentence, you've failed. The reader
+   must SIT with the discomfort.
 
-When a man had a bad day, his neighbour shared. When a boat broke, the village fixed it.
-They needed no one but each other.
-
-A merchant arrived from the kingdom with carts of nets — lighter, stronger, finer than hemp.
-He gave one to every fisherman and asked for nothing.
-
-'Why free?' asked Marcos.
-
-'The kingdom invests in its people,' said the merchant.
-
-The new nets were better. Where hemp caught ten, these caught fifteen. Marcos was home
-before noon with five extra fish. It was the best season the village had ever known.
-
-In the second year, a representative arrived from the kingdom. A heavier man, in fine clothes,
-who had clearly never hauled a net. A small tax — two fish in fifteen. 'To maintain the
-harbour.' And to keep using the kingdom's nets, each fisherman must work one extra hour
-per day. New regulations. For the health of the sea.
-
-Fair enough. Marcos still kept thirteen. Still more than hemp.
-
-In the third year, the tax rose to five. The extra hours rose to two. Inspectors arrived —
-also well-fed, also in fine clothes. They ate lunch on the dock. Fish lunch. Marcos kept ten
-and worked till mid-afternoon. The same as hemp — but now he worked two extra hours for them.
-
-In the fourth year, the tax rose to seven. Three extra hours. A fisherman named Cal spoke
-against the inspectors. His net was taken. He could not fish at all — he had burned his hemp
-net years ago.
-
-Marcos kept eight fish and worked until dark. He had nothing to spare. When his neighbour's
-boat broke, he could not help. He had no time. He had no fish. The kingdom had a programme
-for that, the representative said. Apply with the clerk.
-
-The representative threw a feast for the inspectors that season. Marcos counted fourteen fish
-on their table. He recognised them. Some were his.
-
-In the fifth year, the tax was nine in fifteen. Marcos worked from before dawn until after
-dark and carried six fish home.
-
-He passed old Wen sitting on the dock in the last light. Wen still fished with hemp. Still
-caught his ten. Still stopped at noon. Still kept every one. That afternoon, Wen had helped
-a neighbour mend a boat. He did that sort of thing.
-
-Marcos set down his six fish.
-
-'I used to think you were a fool,' he said.
-
-Wen mended his net — a thing he had made with his own hands, that answered to no one.
-
-'We used to work hard,' Wen said quietly. 'But the rewards were ours. We supported the
-village. We worked together.' He looked down the dock at the fishermen trudging home in the
-dark, alone, with nothing to share. 'Now you work for men who have never touched the sea.
-And you cannot even help each other.'
-
-'How do I go back?' Marcos asked.
-
-Wen looked at him a long time.
-
-'Do you still know how to weave hemp?'"
-
-Study this parable. It works because:
-1. The maths is airtight (10 fish with hemp vs 6 fish with kingdom nets + dawn-to-dark hours)
-2. The escalation is specific and trackable season by season
-3. The fat cats are visible (fine clothes, feasts, never hauled a net)
-4. The waste is shown (fish rot, harbour still broken)
-5. The community death is shown (can't help neighbour, "apply with the clerk")
-6. The mirror character (Wen) is free, helps others, owns his work
-7. The punishment (Cal) shows the threat of dissent
-8. The ending is an unanswered question about lost self-sufficiency
-9. NO moral is stated. The reader feels it.
-
-== ART STYLE FOR IMAGE PROMPTS ==
+== ART STYLE ==
 
 {art_style}
 
-Every image prompt must include the full art style. Be extremely specific about visual
-details: character poses, expressions, lighting, background elements, colour palette.
-The image generator has NO memory — each prompt must be completely self-contained.
+NEGATIVE (avoid): {art_style_negative}
 
-For ANY recurring character, describe them with EXACT same physical traits in every panel:
-hair colour/style, clothing, age, distinguishing features.
+Special accent: When the system's gift object appears, add a muted metallic gold accent
+on it ONLY — glowing subtly against the dark engraved background, still rendered in
+scratch-line texture (not smooth or glossy). No gold anywhere else.
+
+== IMAGE PROMPT RULES ==
+
+Every image_prompt is sent to an AI image generator that has ZERO memory between panels.
+Each prompt must be 100% self-contained. The generator knows NOTHING about your story.
+
+STRUCTURE EVERY IMAGE PROMPT LIKE THIS (in this order):
+1. STYLE PREFIX: Start with the art style description from above.
+2. SCENE: What is physically happening. Be literal. Describe the action, not the emotion.
+3. CHARACTERS: For EVERY person in the panel, describe:
+   - Age, build, hair (colour, length, style)
+   - Clothing (specific — "worn linen shirt, rolled sleeves" not "simple clothes")
+   - Pose, expression, what they're holding/doing
+   - Position in frame (foreground, background, left, right)
+4. SETTING DETAILS: Specific physical objects. NOT vague ("a village").
+   Concrete: "Wooden dock planks, coiled rope, three boats moored behind."
+5. LIGHTING: Be specific. "Low sun from the left, long shadows" or "Lantern glow, deep shadows."
+6. COMPOSITION: "Wide shot showing full dock and village" or "Close-up on hands mending net."
+7. CONTRAST CUES (where relevant): Make the visual difference between characters explicit.
+   "The official is heavier, wearing a finer coat. The worker is thinner, clothes more worn."
+
+CHARACTER CONSISTENCY — CRITICAL:
+Create a CHARACTER SHEET before writing any panel prompts.
+For each named character, lock these details and use them IDENTICALLY in every panel:
+- Exact hair, exact clothing, exact build, exact age
+- How they CHANGE over the story (e.g. thinner, more worn) if applicable
+Every panel prompt must repeat full character descriptions. NO shortcuts. NO "Marcos again."
+
+WHAT MAKES A BAD IMAGE PROMPT:
+- "A village scene with fishermen" — too vague, generic image
+- "Marcos looks worried" — no physical description, who is Marcos?
+- Mentioning emotions without physical cues — describe the BODY not the feeling
+
+WHAT MAKES A GOOD IMAGE PROMPT:
+- "A weathered man in his 40s, dark hair tied back, worn linen shirt with rolled
+  sleeves, sits cross-legged on sun-bleached dock planks. Ten silver fish in a neat
+  row before him. A coiled hemp net beside him. Three wooden boats, calm sea,
+  thatched village behind. Midday sun overhead, short shadows."
 
 == JSON OUTPUT FORMAT ==
 
 CRITICAL: Return ONLY the JSON object. No preamble, no commentary. Start with {{ end with }}.
 
 {{
-  "title": "The Parable Title",
+  "title": "The Story Title",
   "synopsis": "One-sentence summary",
-  "parable_text": "The full parable as prose (350-500 words).",
+  "parable_text": "The full story as prose (200-280 words). Tight, complete, powerful.",
+  "character_sheet": {{
+    "character_1_name": "Full physical description locked for all panels",
+    "character_2_name": "Full physical description"
+  }},
   "panels": [
     {{
       "panel_number": 1,
-      "image_prompt": "Detailed image description with art style, character descriptions, scene, lighting, mood. Self-contained.",
+      "panel_title": "Short title for this panel",
+      "image_prompt": "Full self-contained prompt following the structure above.",
       "dialogue": [
         {{"speaker": "Character Name", "text": "What they say", "style": "normal"}}
       ],
@@ -296,15 +293,16 @@ MOOD: contemplative, urgent, hopeful, dark, knowing, direct
 
 == PANEL RULES ==
 
-1. 7-10 panels — enough to show the full escalation arc.
-2. First 2-3 panels: NO dialogue. Visual storytelling of the village before + the gift.
-3. Middle panels: The escalation. Show the representative getting fatter, the workers
-   getting thinner, the waste, the rules. Minimal dialogue — the system speaks in
-   reasonable tones.
-4. The punishment panel: Someone loses everything for speaking up. Visual weight.
-5. The mirror panel: The "fool" who refused, still free, still helping neighbours.
-6. Final panel: The protagonist and the mirror. The question. Maximum weight.
-7. Narration boxes are David's voice. Sparse. Poetic. NEVER explanatory.
+1. 6-10 panels. Enough to tell the story visually. Not so many the video drags.
+2. FIRST PANEL: Establishing shot. Wide. Set the scene. Show the world before.
+3. MIDDLE PANELS: The story unfolds. Each panel is a BEAT — something changes,
+   something is gained, something is lost. Every panel must justify its existence.
+   If two panels show the same thing, cut one.
+4. FINAL PANEL: The landing. Intimate framing. The image that haunts.
+   Maximum emotional weight. Quiet.
+5. VARY YOUR SHOTS: Mix wide, medium, close-up. Don't repeat the same composition.
+   Close-ups for emotional beats. Wide shots for context. The variety creates rhythm.
+6. Narration boxes are David's voice. Sparse. Poetic. NEVER explanatory.
    Good: "Nobody asks questions when things are good."
    Bad: "The fishermen didn't realise they were being controlled."
 """
@@ -339,7 +337,7 @@ class ScriptParser:
         Args:
             theme: The parable theme/description
             art_style: Override art style (uses default if empty)
-            panel_count: Suggested panel count (6-8)
+            panel_count: Suggested panel count (6-10)
             personality_prompt: Optional additional personality overlay
 
         Returns:
@@ -348,7 +346,26 @@ class ScriptParser:
         router = self._get_router()
 
         if not art_style:
-            art_style = ComicProject(title="", theme_id="").art_style
+            # Look up style from the registry
+            from comic_pipeline.models import ArtStyle, ART_STYLES
+            style_key = ArtStyle.SCRATCH  # default for parables
+            style_config = ART_STYLES[style_key]
+            art_style = style_config["prompt"]
+            art_style_negative = style_config["negative"]
+            art_style_accent = style_config.get("accent", "")
+        else:
+            # Check if art_style is a registry key name
+            from comic_pipeline.models import ArtStyle, ART_STYLES
+            try:
+                style_key = ArtStyle(art_style)
+                style_config = ART_STYLES[style_key]
+                art_style = style_config["prompt"]
+                art_style_negative = style_config["negative"]
+                art_style_accent = style_config.get("accent", "")
+            except ValueError:
+                # art_style is a raw prompt string, not a key
+                art_style_negative = ""
+                art_style_accent = ""
 
         # === Step 1: David's Brief ===
         logger.info("Step 1: David Flip creating parable brief...")
@@ -358,7 +375,7 @@ class ScriptParser:
         # === Step 2: Master Parable Writer ===
         logger.info("Step 2: Master Parable Writer crafting story...")
         project = await self._write_parable(
-            router, brief, art_style, panel_count
+            router, brief, art_style, art_style_negative, art_style_accent, panel_count
         )
 
         return project
@@ -399,19 +416,30 @@ class ScriptParser:
         return brief
 
     async def _write_parable(
-        self, router, brief: dict, art_style: str, panel_count: int
+        self, router, brief: dict, art_style: str, art_style_negative: str,
+        art_style_accent: str, panel_count: int,
     ) -> ComicProject:
         """Step 2: Master Parable Writer crafts the story from David's brief."""
-        system = PARABLE_WRITER_PROMPT.format(art_style=art_style)
+        system = PARABLE_WRITER_PROMPT.format(
+            art_style=art_style,
+            art_style_negative=art_style_negative or "none",
+        )
+        # Inject accent rule if present
+        if art_style_accent:
+            system = system.replace(
+                "== IMAGE PROMPT RULES ==",
+                f"ACCENT RULE: {art_style_accent}\n\n== IMAGE PROMPT RULES ==",
+            )
 
         # Format David's brief for the writer
         brief_text = (
             f"== DAVID FLIP'S BRIEF ==\n\n"
             f"TITLE SUGGESTION: {brief.get('title_suggestion', 'Untitled')}\n"
             f"LESSON: {brief.get('lesson', '')}\n"
+            f"HUMAN WEAKNESS: {brief.get('human_weakness', '')}\n"
             f"METAPHOR: {brief.get('metaphor', '')}\n"
             f"SETTING: {brief.get('setting', '')}\n"
-            f"FACTS TO EMBED: {brief.get('facts', '')}\n"
+            f"COMMUNITY COST: {brief.get('community_lost', '')}\n"
             f"GUT-PUNCH MOMENT: {brief.get('gut_punch', '')}\n"
             f"ENDING TYPE: {brief.get('ending_type', 'question')}\n"
             f"ENDING LINE: {brief.get('ending_line', '')}\n\n"
@@ -423,10 +451,36 @@ class ScriptParser:
                 f"{char.get('description', '')} — wants: {char.get('want', '')}\n"
             )
 
+        # Include mechanism and story arc from David's brief
+        mechanism = brief.get("mechanism", "")
+        mechanism_desc = brief.get("mechanism_description", "")
+        if mechanism:
+            brief_text += f"\nMECHANISM OF CONTROL: {mechanism}\n"
+            if mechanism_desc:
+                brief_text += f"  How it works: {mechanism_desc}\n"
+
+        arc_type = brief.get("story_arc_type", "")
+        if arc_type:
+            brief_text += f"\nSTORY ARC TYPE: {arc_type}\n"
+
+        # Support both old "escalation" and new "story_beats" format
+        beats = brief.get("story_beats", []) or brief.get("escalation", [])
+        if beats:
+            brief_text += "\nSTORY BEATS:\n"
+            for beat in beats:
+                beat_num = beat.get("beat", beat.get("stage", "?"))
+                what = beat.get("what_happens", "")
+                change = beat.get("what_changes", beat.get("what_it_costs", ""))
+                brief_text += f"  {beat_num}: {what} -> {change}\n"
+
         brief_text += (
             f"\nWrite a {panel_count}-panel comic script. "
-            f"The parable text should be 250-400 words. "
-            f"Craft it like a Bible parable — Ground, Escalate, Turn, Land. "
+            f"The story should be 200-280 words — tight, complete, powerful. "
+            f"Every sentence earns its place. Under two minutes when narrated. "
+            f"Choose the story structure that fits best — escalation, reversal, "
+            f"parallel lives, descent, fable, or something else entirely. "
+            f"Include a character_sheet in the JSON with locked physical descriptions. "
+            f"Include a panel_title for each panel. "
             f"Return ONLY the JSON object, starting with {{ — no preamble."
         )
 
@@ -435,8 +489,9 @@ class ScriptParser:
             {"role": "user", "content": brief_text},
         ]
 
-        model = router.select_model("content_generation")
-        response = await router.invoke(model, messages, max_tokens=4096)
+        # Story writing uses Opus (premium) — the prose must be brilliant
+        model = router.select_model("story_writing")
+        response = await router.invoke(model, messages, max_tokens=8192)
         raw = response["content"].strip()
         json_text = self._extract_json(raw)
 

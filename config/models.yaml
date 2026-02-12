@@ -55,6 +55,8 @@ task_routing:
   write_email: mid
   code_generation: mid
   content_creation: mid
+  content_generation: mid    # Comic pipeline — panel prompts
+  story_writing: premium     # Comic pipeline — parable/fable prose (must be brilliant)
   ama_response: mid
 
   # Opus - 3-5% of tasks, premium
