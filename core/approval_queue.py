@@ -247,6 +247,24 @@ class ApprovalQueue:
             parts.append(f"~{est_dur:.0f}s")
             header = " | ".join(parts)
             return f'{header}\nScript: "{script[:200]}..."'
+        elif action_type == "comic_distribute":
+            title = action_data.get("title", "Untitled")
+            panel_count = action_data.get("panel_count", 0)
+            synopsis = action_data.get("synopsis", "")
+            pdf_path = action_data.get("pdf_path", "")
+            video_path = action_data.get("video_path", "")
+            cost = action_data.get("total_cost", 0)
+            parts = [f"Comic: {title}", f"{panel_count} panels"]
+            if synopsis:
+                parts.append(f'"{synopsis[:120]}"')
+            header = " | ".join(parts)
+            preview = header
+            if pdf_path:
+                preview += f"\nPDF: {pdf_path}"
+            if video_path:
+                preview += f"\nVideo: {video_path}"
+            preview += f"\nCost: ${cost:.2f}"
+            return preview
         elif action_type in ("video_distribute", "video_tweet"):
             script = action_data.get("script", "")
             pillar = action_data.get("pillar", "")

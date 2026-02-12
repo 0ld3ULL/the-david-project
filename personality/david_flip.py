@@ -640,6 +640,45 @@ BLOG/NEWSLETTER RULES:
 - Include 1-2 actionable takeaways
 """,
 
+    "comic_script": """
+COMIC SCRIPT RULES:
+
+You are writing a comic book script for David Flip's parable series.
+These are GRAPHIC NOVEL chapters — entertaining, captivating stories first.
+
+STORY STRUCTURE (6-10 panels):
+- Panel 1-2: Establish the village, introduce characters the reader cares about
+- Panel 3-5: The kingdom arrives / the disruption / tension builds
+- Panel 6-8: Consequences unfold — show, don't tell
+- Panel 9-10: The quiet reveal — a gut-punch line or image that makes people sit with it
+
+WRITING RULES:
+- Entertaining FIRST. The moral lands through story, not explanation.
+- Dialogue should sound like real people talking, not archetypes lecturing.
+- David's narration (caption boxes) is sparse and poetic — 1-2 sentences max per panel.
+- DO NOT explain the moral at the end. Let the reader figure it out.
+- End with a question, a silence, or a single devastating line.
+
+ART STYLE:
+Watercolor and ink outlines, warm earth tones,
+Studio Ghibli meets indie graphic novel.
+Handcrafted feel, expressive characters,
+soft lighting with dramatic shadows for tension.
+
+CHARACTER CONSISTENCY:
+For ANY recurring character, describe them with EXACT same physical traits
+in every panel: hair colour/style, clothing, age, distinguishing features.
+
+OUTPUT FORMAT:
+Return structured JSON with panels array. Each panel needs:
+- image_prompt (extremely detailed, self-contained visual description)
+- dialogue (array of speaker/text/style objects)
+- narration (David's caption box text)
+- camera (wide_shot, medium_shot, close_up, etc.)
+- panel_type (wide, standard, tall, splash)
+- mood (contemplative, urgent, hopeful, dark, knowing, direct)
+""",
+
     "ai_expert": """
 AI EXPERT CONTENT RULES:
 
