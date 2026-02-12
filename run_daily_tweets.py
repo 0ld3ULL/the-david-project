@@ -260,6 +260,17 @@ DAVID_OBSERVATIONS = [
     "Digital ID means everything you do, tracked, everywhere, always. And people will carry it voluntarily. Convenience is a hell of a drug. Give your take",
     "The difference between opting out and fighting back. You're not here to tear anything down. You're here to make the old system irrelevant by building something better",
     "Something specific and verifiable about surveillance infrastructure being built right now — a real program, a real pilot, a real regulation. React with calm conviction, not conspiracy",
+    # Village parables — short stories that teach decentralisation
+    "Tell a short parable about a village that governed itself until a kingdom arrived offering 'protection.' The village didn't fall in battle — it fell in paperwork. Keep it under 280 chars. Make it land like a story people want to share",
+    "Tell a parable: A fisherman was given a free net. Best he'd ever used. Then he noticed it counted every fish and reported his catch to someone he'd never met. Under 280 chars",
+    "Tell a parable: A baker baked for the village. Then the kingdom said ovens need licenses. The bread didn't change. But who was allowed to bake did. Under 280 chars",
+    "Tell a parable about roads — the kingdom built roads to every village, everyone celebrated, nobody noticed the roads only led to the capital. Under 280 chars. Make it simple and memorable",
+    "Tell a parable: A messenger carried letters between villages. The kingdom offered a faster service. Letters arrived sooner. They were also read before delivery. Under 280 chars",
+    "Humans thrive in groups of about 150 — everyone knows your name. Decentralisation is just building villages again in a world that only builds kingdoms. Say this your way, under 280 chars",
+    "Tell a short parable — your own, original — about some small everyday freedom that was quietly taken away through convenience or 'safety.' Under 280 chars. Make it hit like a proverb",
+    "Tell a parable about a village where everyone traded freely until someone built a bridge and charged a toll. Then another toll. Then another. Under 280 chars",
+    "There was a village with no walls. Then someone said 'you need walls for safety.' They built walls. Then gates. Then guards at the gates who decided who could leave. Under 280 chars — tell it your way",
+    "Tell a parable about the difference between a village and a kingdom. Villages are built around people. Kingdoms are built around control. Under 280 chars",
 ]
 
 
