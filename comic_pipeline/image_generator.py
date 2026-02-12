@@ -208,7 +208,7 @@ class FluxImageGenerator:
             elapsed += interval
 
             response = await client.get(status_url)
-            if response.status_code != 200:
+            if response.status_code not in (200, 202):
                 logger.warning(f"Poll status check failed: {response.status_code} - {response.text[:200]}")
                 # Try the response_url directly (some fal endpoints skip status)
                 if elapsed > 10:
