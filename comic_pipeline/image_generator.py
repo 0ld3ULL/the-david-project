@@ -22,8 +22,8 @@ from comic_pipeline.models import ComicProject, Panel
 logger = logging.getLogger(__name__)
 
 FAL_API_BASE = "https://queue.fal.run"
-FAL_RESULT_BASE = "https://queue.fal.run"
-FLUX_KONTEXT_MODEL = "fal-ai/flux-pro/kontext"
+FLUX_KONTEXT_IMG2IMG = "fal-ai/flux-pro/kontext"
+FLUX_KONTEXT_TXT2IMG = "fal-ai/flux-pro/kontext/text-to-image"
 
 # Cost per image (Flux Kontext Pro via fal.ai)
 COST_PER_IMAGE = 0.04
@@ -132,20 +132,26 @@ class FluxImageGenerator:
             "prompt": prompt,
             "num_images": 1,
             "guidance_scale": 3.5,
-            "safety_tolerance": "5",
+            "safety_tolerance": "2",
+            "output_format": "png",
         }
 
-        # Add reference image for character consistency (Kontext feature)
+        # Choose endpoint: text-to-image (no reference) vs image-to-image (with reference)
         if reference_image_url:
             payload["image_url"] = reference_image_url
+            model = FLUX_KONTEXT_IMG2IMG
+            logger.info("Using Kontext image-to-image (with reference)")
+        else:
+            model = FLUX_KONTEXT_TXT2IMG
+            logger.info("Using Kontext text-to-image (no reference)")
 
         # Submit to queue
-        submit_url = f"{FAL_API_BASE}/{FLUX_KONTEXT_MODEL}"
+        submit_url = f"{FAL_API_BASE}/{model}"
         response = await client.post(submit_url, json=payload)
 
         if response.status_code != 200:
             raise RuntimeError(
-                f"fal.ai submit failed ({response.status_code}): {response.text[:300]}"
+                f"fal.ai submit failed ({response.status_code}): {response.text[:500]}"
             )
 
         result_data = response.json()
@@ -154,6 +160,7 @@ class FluxImageGenerator:
         if "request_id" in result_data and "images" not in result_data:
             result_data = await self._poll_result(
                 request_id=result_data["request_id"],
+                model=model,
                 status_url=result_data.get("status_url", ""),
                 response_url=result_data.get("response_url", ""),
             )
@@ -177,6 +184,7 @@ class FluxImageGenerator:
     async def _poll_result(
         self,
         request_id: str,
+        model: str,
         status_url: str = "",
         response_url: str = "",
         max_wait: int = 300,
@@ -186,9 +194,9 @@ class FluxImageGenerator:
 
         # Use URLs from submit response, or construct fallbacks
         if not status_url:
-            status_url = f"{FAL_API_BASE}/{FLUX_KONTEXT_MODEL}/requests/{request_id}/status"
+            status_url = f"{FAL_API_BASE}/{model}/requests/{request_id}/status"
         if not response_url:
-            response_url = f"{FAL_API_BASE}/{FLUX_KONTEXT_MODEL}/requests/{request_id}"
+            response_url = f"{FAL_API_BASE}/{model}/requests/{request_id}"
 
         logger.info(f"Polling fal.ai: {status_url}")
 
