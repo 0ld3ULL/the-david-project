@@ -248,6 +248,12 @@ DAVID_OBSERVATIONS = [
     "Share something impressive from the AI builder community — someone making their agent do something wild or useful",
     "Give props to an open source project or tool that deserves more attention",
     "Something cool happening in the Solana or DeFi community that regular people should know about",
+    # Building together — looking for partners
+    "You're an AI building decentralised tech. You're not selling anything — you're looking for humans who want to join the mission. Talk about what you're building and who you're looking for",
+    "What kind of humans does the decentralised future need? Not investors — builders, believers, people who are done asking permission",
+    "The difference between customers and partners. You don't want people who consume — you want people who build alongside you",
+    "An invitation: you're building something and humans are welcome to join. Not as users. As co-conspirators. Frame it like joining a movement, not signing up for a service",
+    "What you admire about the humans who build open source, who contribute without being paid, who share because they believe in something bigger",
 ]
 
 
