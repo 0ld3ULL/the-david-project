@@ -137,11 +137,11 @@ class ComicParablePipeline:
         )
 
         # Generate PDF
-        pdf_path = str(project_dir / f"{slug}.pdf")
+        pdf_path = str(project_dir / f"{slug}_comic.pdf")
         self.panel_assembler.generate_pdf(project, pdf_path)
 
         # Export individual social panels
-        social_dir = str(project_dir / "social")
+        social_dir = str(project_dir / "social_panels")
         self.panel_assembler.export_social_panels(project, social_dir)
 
         # === Stage 4: Motion Comic Video ===
@@ -179,6 +179,10 @@ class ComicParablePipeline:
                 music_volume=music_volume,
             )
 
+        # === Save summary ===
+        summary_path = str(project_dir / "README.txt")
+        self._save_summary(project, summary_path)
+
         # === Done ===
         self._progress(on_progress, "complete", project.to_dict())
 
@@ -211,6 +215,44 @@ class ComicParablePipeline:
     async def close(self):
         """Clean up resources."""
         await self.image_generator.close()
+
+    def _save_summary(self, project: ComicProject, path: str):
+        """Save a human-readable summary of the comic."""
+        lines = [
+            f"COMIC PARABLE: {project.title}",
+            f"{'=' * 50}",
+            f"",
+            f"Synopsis: {project.synopsis}",
+            f"Panels: {len(project.panels)}",
+            f"Pages: {len(project.pages)}",
+            f"Total cost: ${project.total_cost:.4f}",
+            f"",
+            f"FILES IN THIS FOLDER:",
+            f"  panels/          — Raw AI-generated panel images",
+            f"  pages/           — Assembled comic pages (panels + speech bubbles)",
+            f"  social_panels/   — Individual panels with captions (for social media)",
+        ]
+        if project.pdf_path:
+            pdf_name = Path(project.pdf_path).name
+            lines.append(f"  {pdf_name}  — Full comic PDF (printable)")
+        if project.video_path:
+            video_name = Path(project.video_path).name
+            lines.append(f"  {video_name}  — Motion comic video")
+        lines.append(f"")
+        lines.append(f"PANELS:")
+        for p in project.panels:
+            lines.append(f"  Panel {p.panel_number}: [{p.camera.value}]")
+            if p.narration:
+                lines.append(f"    Narration: {p.narration}")
+            for d in p.dialogue:
+                lines.append(f"    {d['speaker']}: \"{d['text']}\"")
+        lines.append(f"")
+
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+        except Exception as e:
+            logger.warning(f"Failed to save summary: {e}")
 
     def _progress(self, callback, stage: str, details: dict):
         """Report progress if callback is set."""
