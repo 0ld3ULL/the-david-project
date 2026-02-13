@@ -194,7 +194,19 @@ class OccyReviewer:
                 raise Exception(f"Gemini API error {response.status_code}: {response.text}")
 
             result = response.json()
-            text = result["candidates"][0]["content"]["parts"][0]["text"]
+
+            # Defensive parsing — Gemini response structure can vary
+            text = None
+            for candidate in result.get("candidates", []):
+                for part in candidate.get("content", {}).get("parts", []):
+                    if "text" in part:
+                        text = part["text"]
+                        break
+                if text:
+                    break
+
+            if not text:
+                raise Exception(f"Gemini response missing text content: {result}")
 
         # Step 3: Parse the structured response
         return self._parse_review_response(text)
