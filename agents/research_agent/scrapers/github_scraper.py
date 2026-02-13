@@ -27,6 +27,7 @@ class GitHubScraper:
         self.token = os.environ.get("GITHUB_TOKEN", "")
         self.client = httpx.AsyncClient(
             timeout=30.0,
+            follow_redirects=True,
             headers={
                 "Accept": "application/vnd.github.v3+json",
                 "Authorization": f"token {self.token}" if self.token else "",

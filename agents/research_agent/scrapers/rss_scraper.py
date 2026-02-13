@@ -26,7 +26,7 @@ class RSSScraper:
 
     def __init__(self):
         self.feeds = self._load_feeds()
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
 
     def _load_feeds(self) -> List[dict]:
         """Load RSS feed configuration."""

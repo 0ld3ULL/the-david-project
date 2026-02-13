@@ -59,7 +59,7 @@ class RedditScraper:
     async def _get_hot_posts(self, subreddit: str, limit: int = 10) -> List[ResearchItem]:
         """Get hot posts from a subreddit."""
         items = []
-        url = f"https://www.reddit.com/r/{subreddit}/hot.json"
+        url = f"https://old.reddit.com/r/{subreddit}/hot.json"
 
         try:
             response = await self.client.get(url, params={

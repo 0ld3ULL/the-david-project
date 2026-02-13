@@ -19,7 +19,7 @@ from ..knowledge_store import ResearchItem
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = "config/research_goals.yaml"
-ARXIV_API = "http://export.arxiv.org/api/query"
+ARXIV_API = "https://export.arxiv.org/api/query"
 
 
 class ArXivScraper:

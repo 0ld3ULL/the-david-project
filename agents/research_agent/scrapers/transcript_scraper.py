@@ -157,9 +157,12 @@ class TranscriptScraper:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                               "AppleWebKit/537.36 (KHTML, like Gecko) "
-                              "Chrome/120.0.0.0 Safari/537.36"
+                              "Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9",
             }
-            response = await self.client.get(url, follow_redirects=True, headers=headers)
+            # CONSENT cookie bypasses EU consent wall that blocks VPS in EU regions
+            cookies = {"CONSENT": "PENDING+987", "SOCS": "CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjMwODI5LjA3X3AxGgJlbiACGgYIgJnPpwY"}
+            response = await self.client.get(url, follow_redirects=True, headers=headers, cookies=cookies)
             if response.status_code == 200:
                 text = response.text
                 # Try multiple patterns - YouTube embeds channel ID in various ways
