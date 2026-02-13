@@ -94,12 +94,8 @@ class FocalBrowser:
             }
 
             # Use persistent user data dir for cookie/session persistence
+            # (don't combine with storage_state — causes warning spam)
             browser_kwargs["user_data_dir"] = str(BROWSER_PROFILE_DIR)
-
-            # Also load storage state if saved from a previous session
-            state_file = BROWSER_PROFILE_DIR / "state.json"
-            if state_file.exists():
-                browser_kwargs["storage_state"] = str(state_file)
 
             self.browser = Browser(**browser_kwargs)
 
@@ -161,8 +157,8 @@ class FocalBrowser:
 
         try:
             page = await self.browser.get_current_page()
-            await page.goto("https://focalml.com", timeout=30000)
-            await page.wait_for_load_state("networkidle", timeout=15000)
+            await page.goto("https://focalml.com")
+            await page.wait_for_load_state("networkidle")
 
             # Check URL and page content for login indicators
             url = page.url
@@ -210,8 +206,8 @@ class FocalBrowser:
 
         try:
             page = await self.browser.get_current_page()
-            await page.goto(url, timeout=30000)
-            await page.wait_for_load_state("networkidle", timeout=15000)
+            await page.goto(url)
+            await page.wait_for_load_state("networkidle")
             logger.info(f"Navigated to: {url}")
             return True
         except Exception as e:
@@ -392,8 +388,11 @@ class FocalBrowser:
         Returns credit count as integer, or None if couldn't read it.
         """
         result = await self.run_task(
-            "Find the credit balance display on the page (usually in the header or sidebar). "
-            "Read the number and report it. Return ONLY the number."
+            "You are on focalml.com. Find the credit balance display "
+            "(it shows 'X Credits' in the left sidebar or header). "
+            "If you're not on focalml.com, navigate there first. "
+            "Read the credit number and report it. Return ONLY the number.",
+            max_steps=10,
         )
 
         if result["success"] and result["result"]:
