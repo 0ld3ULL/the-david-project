@@ -152,16 +152,41 @@ class PixelLearner:
         logger.info("All features at confidence >= 0.9 — exploration complete!")
         return None
 
+    def _get_course_knowledge(self, feature_name: str, category: str) -> str:
+        """
+        Query the knowledge base for course material about a feature.
+        Returns relevant course text the agent can use for verification.
+        """
+        # Search for relevant course entries
+        results = []
+        for query in [feature_name, category]:
+            entries = self.knowledge.search(query)
+            for e in entries:
+                if hasattr(e, 'source') and 'youtube_tutorials' in (e.source or ''):
+                    content = e.content if hasattr(e, 'content') else str(e)
+                    if content not in results:
+                        results.append(content)
+
+        if not results:
+            return ""
+
+        # Combine relevant course material (limit to 3000 chars)
+        combined = "\n---\n".join(results)
+        if len(combined) > 3000:
+            combined = combined[:3000] + "\n[...truncated]"
+        return combined
+
     async def explore_feature(self, category: str, feature: dict) -> dict:
         """
         Explore a single feature in Focal ML.
 
         Steps:
-        1. Navigate to the feature area
-        2. Take screenshot for UI mapping
-        3. Identify UI elements via Claude Vision
-        4. Try available options
-        5. Document findings
+        1. Check course material for what tutorials say about this feature
+        2. Navigate to the feature area
+        3. Take screenshot for UI mapping
+        4. Identify UI elements via Claude Vision
+        5. Try available options — verify course claims against live site
+        6. Document findings with verification status
 
         Returns:
             dict with 'success', 'findings', 'confidence_delta', 'credits_used'
@@ -172,13 +197,26 @@ class PixelLearner:
         findings = []
         credits_before = await self.browser.get_credit_balance()
 
-        # Step 1: Navigate to the feature
-        nav_result = await self.browser.run_task(
+        # Step 0: Get course material for context
+        course_context = self._get_course_knowledge(feature_name, category)
+        if course_context:
+            logger.info(f"  Course material found for {feature_name} ({len(course_context)} chars)")
+
+        # Step 1: Navigate to the feature (with course context if available)
+        nav_prompt = (
             f"Navigate to the '{feature_name}' feature area in Focal ML. "
             f"This is in the '{category}' category. "
             f"Feature description: {feature['description']}. "
             f"Find and open this feature's UI."
         )
+        if course_context:
+            nav_prompt += (
+                f"\n\nHere is what tutorial videos from ~March 2025 say about this feature "
+                f"(may be outdated — verify against what you actually see):\n"
+                f"{course_context[:1000]}"
+            )
+
+        nav_result = await self.browser.run_task(nav_prompt)
 
         if not nav_result["success"]:
             findings.append(f"Could not navigate to {feature_name}: {nav_result.get('error')}")
@@ -213,16 +251,27 @@ class PixelLearner:
                 tags=["ui_element", category, feature_name],
             )
 
-        # Step 4: Try available options
-        explore_result = await self.browser.run_task(
+        # Step 4: Try available options — with verification if course material exists
+        explore_prompt = (
             f"You're exploring the '{feature_name}' feature in Focal ML. "
             f"Try the available options one by one: "
             f"- Click each dropdown and note the choices "
             f"- Check toggle states "
             f"- Note any tooltips or help text "
             f"- Do NOT submit anything that costs credits yet "
-            f"Report what you found about each option."
         )
+        if course_context:
+            explore_prompt += (
+                f"\n\nIMPORTANT — VERIFY these claims from ~March 2025 tutorials against "
+                f"what you see on the LIVE site right now:\n"
+                f"{course_context[:2000]}\n\n"
+                f"For each claim, report: CONFIRMED (still true), CHANGED (different now), "
+                f"or NOT FOUND (can't locate this feature). Note any NEW features not in the course."
+            )
+        else:
+            explore_prompt += "Report what you found about each option."
+
+        explore_result = await self.browser.run_task(explore_prompt)
 
         if explore_result["success"]:
             findings.append(f"Options explored: {explore_result['result']}")
@@ -244,8 +293,13 @@ class PixelLearner:
             tags=["feature_exploration", category, feature_name],
         )
 
-        # Update feature map
-        confidence_delta = 0.3 if nav_result["success"] and ui_result["success"] else 0.1
+        # Update feature map — higher confidence when verifying course material
+        if course_context and nav_result["success"] and ui_result["success"]:
+            confidence_delta = 0.5  # Course-verified exploration = fast-tracked learning
+        elif nav_result["success"] and ui_result["success"]:
+            confidence_delta = 0.3
+        else:
+            confidence_delta = 0.1
         self._update_feature_progress(category, feature_name, confidence_delta, knowledge_id)
 
         if self.audit_log:
