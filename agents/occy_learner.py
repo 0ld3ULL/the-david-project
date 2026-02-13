@@ -206,6 +206,9 @@ class OccyLearner:
         5. Try available options — verify course claims against live site
         6. Document findings with verification status
 
+        Auto-detects browser disconnection and aborts early to avoid
+        wasting API calls on a dead browser.
+
         Returns:
             dict with 'success', 'findings', 'confidence_delta', 'credits_used'
         """
@@ -213,7 +216,23 @@ class OccyLearner:
         logger.info(f"Exploring: [{category}] {feature_name}")
 
         findings = []
-        credits_before = await self.browser.get_credit_balance()
+
+        # Only check credit balance if browser is healthy (this is expensive —
+        # spawns a full Browser Use agent task)
+        credits_before = None
+        if self.browser.is_connected:
+            credits_before = await self.browser.get_credit_balance()
+
+        # Bail early if browser died during credit check
+        if not self.browser.is_connected:
+            logger.warning(f"Browser disconnected before exploring {feature_name}")
+            self._update_feature_progress(category, feature_name, 0.0)
+            return {
+                "success": False,
+                "findings": ["Browser disconnected before exploration"],
+                "confidence_delta": 0.0,
+                "credits_used": 0,
+            }
 
         # Step 0: Get course material for context
         course_context = self._get_course_knowledge(feature_name, category)
@@ -236,6 +255,17 @@ class OccyLearner:
 
         nav_result = await self.browser.run_task(nav_prompt)
 
+        # Check for browser death
+        if nav_result.get("disconnected"):
+            logger.warning(f"Browser disconnected during navigation to {feature_name}")
+            self._update_feature_progress(category, feature_name, 0.0)
+            return {
+                "success": False,
+                "findings": ["Browser disconnected during navigation"],
+                "confidence_delta": 0.0,
+                "credits_used": 0,
+            }
+
         if not nav_result["success"]:
             findings.append(f"Could not navigate to {feature_name}: {nav_result.get('error')}")
             # Still update progress so repeated failures eventually move past this feature
@@ -257,6 +287,17 @@ class OccyLearner:
             f"List each one with its label, type, and current value/state. "
             f"Be thorough — catalog everything you can see."
         )
+
+        # Check for browser death after UI scan
+        if ui_result.get("disconnected"):
+            logger.warning(f"Browser disconnected during UI scan of {feature_name}")
+            self._update_feature_progress(category, feature_name, 0.05)
+            return {
+                "success": False,
+                "findings": ["Browser disconnected during UI scan"],
+                "confidence_delta": 0.05,
+                "credits_used": 0,
+            }
 
         if ui_result["success"]:
             findings.append(f"UI elements: {ui_result['result']}")
@@ -293,11 +334,34 @@ class OccyLearner:
 
         explore_result = await self.browser.run_task(explore_prompt)
 
+        if explore_result.get("disconnected"):
+            logger.warning(f"Browser disconnected during option exploration of {feature_name}")
+            # Still save what we have
+            if findings:
+                self.knowledge.add(
+                    category="technical",
+                    topic=f"Focal ML feature: {feature_name} (partial)",
+                    content="\n".join(findings)[:4000],
+                    source="occy_exploration",
+                    confidence=0.5,
+                    tags=["feature_exploration", "partial", category, feature_name],
+                )
+            self._update_feature_progress(category, feature_name, 0.1)
+            return {
+                "success": False,
+                "findings": findings + ["Browser disconnected during exploration"],
+                "confidence_delta": 0.1,
+                "credits_used": 0,
+            }
+
         if explore_result["success"]:
             findings.append(f"Options explored: {explore_result['result']}")
 
-        # Step 5: Document findings
-        credits_after = await self.browser.get_credit_balance()
+        # Step 5: Document findings — skip credit balance if browser is unhealthy
+        credits_after = None
+        if self.browser.is_connected:
+            credits_after = await self.browser.get_credit_balance()
+
         credits_used = 0
         if credits_before is not None and credits_after is not None:
             credits_used = max(0, credits_before - credits_after)
@@ -352,11 +416,32 @@ class OccyLearner:
 
         self._save_feature_map()
 
+    async def _ensure_browser_connected(self) -> bool:
+        """
+        Check browser health and restart if disconnected.
+
+        Returns True if browser is connected (or successfully restarted).
+        Returns False if browser is dead and couldn't be restarted.
+        """
+        if self.browser.is_connected:
+            return True
+
+        logger.warning("Browser disconnected — attempting restart...")
+        success = await self.browser.restart()
+
+        if success:
+            logger.info("Browser restarted — resuming exploration")
+            return True
+        else:
+            logger.error("Browser restart failed — ending exploration session")
+            return False
+
     async def run_exploration_session(self, duration_minutes: int = 30) -> dict:
         """
         Run a timed exploration session.
 
         Explores features one by one until time runs out.
+        Auto-restarts the browser if it disconnects mid-session.
 
         Returns:
             dict with 'features_explored', 'knowledge_entries', 'total_credits',
@@ -369,11 +454,17 @@ class OccyLearner:
         knowledge_entries = 0
         total_credits = 0
         explored_features = []
+        browser_restarts = 0
         session_attempted = set()  # Track features tried this session to avoid repeats
 
         logger.info(f"Starting {duration_minutes}-minute exploration session")
 
         while datetime.now().timestamp() < deadline:
+            # Check browser health before each feature
+            if not await self._ensure_browser_connected():
+                logger.error("Browser unrecoverable — ending session")
+                break
+
             # Select next feature — exclude ones already tried this session
             selection = self._select_next_feature(exclude=session_attempted)
             if selection is None:
@@ -402,6 +493,16 @@ class OccyLearner:
                 "confidence_delta": result["confidence_delta"],
             })
 
+            # If browser disconnected during exploration, try restart
+            if not self.browser.is_connected:
+                logger.warning(
+                    f"Browser died during exploration of {feature['name']}"
+                )
+                browser_restarts += 1
+                if browser_restarts > 3:
+                    logger.error("Too many browser restarts — ending session")
+                    break
+
             # Brief pause between features
             await asyncio.sleep(2)
 
@@ -412,12 +513,14 @@ class OccyLearner:
             "knowledge_entries": knowledge_entries,
             "total_credits": total_credits,
             "session_duration_minutes": round(duration_actual, 1),
+            "browser_restarts": browser_restarts,
             "explored": explored_features,
         }
 
         logger.info(
             f"Exploration session complete: {features_explored} features, "
             f"{knowledge_entries} knowledge entries, {total_credits} credits, "
+            f"{browser_restarts} browser restarts, "
             f"{duration_actual:.1f} minutes"
         )
 

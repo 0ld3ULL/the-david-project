@@ -64,6 +64,7 @@ class FocalBrowser:
         self.browser = None
         self.page = None
         self._running = False
+        self._connected = False  # Track browser connection health
         self._temp_profile = None  # Set if we fall back to temp profile
 
         # Build domain allowlist
@@ -124,9 +125,9 @@ class FocalBrowser:
                 state_file = BROWSER_PROFILE_DIR / "state.json"
                 if state_file.exists():
                     browser_kwargs["storage_state"] = str(state_file)
-                    # Explicitly disable user_data_dir to prevent browser-use
-                    # from auto-creating one (which triggers warning spam)
-                    browser_kwargs["user_data_dir"] = None
+                    # Do NOT pass user_data_dir at all when using storage_state.
+                    # Passing None makes browser-use create a default temp dir,
+                    # then it warns about storage_state + user_data_dir conflict.
                     logger.info(f"Loading session from {state_file}")
                 else:
                     browser_kwargs["user_data_dir"] = str(self._temp_profile)
@@ -137,6 +138,7 @@ class FocalBrowser:
             await self.browser.start()
             self.page = await self.browser.get_current_page()
             self._running = True
+            self._connected = True
 
             logger.info(
                 f"Browser started ({'headless' if self.headless else 'visible'} mode)"
@@ -176,6 +178,7 @@ class FocalBrowser:
             logger.error(f"Error during browser shutdown: {e}")
         finally:
             self._running = False
+            self._connected = False
             self.browser = None
             self.page = None
             # Clean up temp profile if we used one
@@ -187,6 +190,61 @@ class FocalBrowser:
                     pass
                 self._temp_profile = None
             logger.info("Browser stopped")
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if browser is running and connected."""
+        return self._running and self._connected
+
+    async def restart(self) -> bool:
+        """
+        Restart browser after a disconnect.
+
+        Stops the old browser (ignoring errors), starts fresh,
+        and re-verifies Focal ML login.
+
+        Returns True if browser restarted and login is active.
+        """
+        logger.info("Restarting browser after disconnect...")
+
+        # Force cleanup
+        try:
+            if self.browser:
+                await self.browser.stop()
+        except Exception:
+            pass
+
+        self._running = False
+        self._connected = False
+        self.browser = None
+        self.page = None
+
+        # Clean up temp profile
+        if self._temp_profile and self._temp_profile.exists():
+            import shutil
+            try:
+                shutil.rmtree(self._temp_profile, ignore_errors=True)
+            except Exception:
+                pass
+            self._temp_profile = None
+
+        # Brief pause before restarting
+        await asyncio.sleep(3)
+
+        # Start fresh
+        success = await self.start()
+        if not success:
+            logger.error("Browser restart failed — could not start")
+            return False
+
+        # Re-verify login
+        logged_in = await self.check_login()
+        if not logged_in:
+            logger.error("Browser restarted but Focal ML login lost")
+            return False
+
+        logger.info("Browser restarted successfully — Focal ML session active")
+        return True
 
     async def check_login(self) -> bool:
         """
@@ -281,6 +339,20 @@ class FocalBrowser:
             logger.error(f"Screenshot failed: {e}")
             return None
 
+    # Error patterns that indicate the browser has disconnected
+    _DISCONNECT_PATTERNS = [
+        "browser not connected",
+        "target may have detached",
+        "no valid agent focus",
+        "browser is in an unstable state",
+        "cdp connected but failed",
+    ]
+
+    def _is_disconnect_error(self, error_text: str) -> bool:
+        """Check if an error indicates browser disconnection."""
+        error_lower = error_text.lower()
+        return any(p in error_lower for p in self._DISCONNECT_PATTERNS)
+
     async def run_task(self, task: str, max_steps: int = 25) -> dict:
         """
         Run a Browser Use agent task on the current page.
@@ -294,10 +366,14 @@ class FocalBrowser:
             max_steps: Maximum number of browser actions
 
         Returns:
-            dict with 'success', 'result', 'steps_taken', 'error'
+            dict with 'success', 'result', 'steps_taken', 'error',
+            and 'disconnected' (True if browser connection was lost)
         """
-        if not self._running:
-            return {"success": False, "error": "Browser not running", "steps_taken": 0}
+        if not self._running or not self._connected:
+            return {
+                "success": False, "error": "Browser not connected",
+                "steps_taken": 0, "disconnected": True,
+            }
 
         try:
             from browser_use import Agent
@@ -319,20 +395,42 @@ class FocalBrowser:
 
             history = await agent.run(max_steps=max_steps)
 
+            # Check the history for disconnect errors
+            result_text = str(history.final_result() or "")
+            if self._is_disconnect_error(result_text):
+                self._connected = False
+                logger.warning("Browser disconnected during task execution")
+                return {
+                    "success": False,
+                    "result": result_text,
+                    "steps_taken": len(history.history),
+                    "error": "Browser disconnected",
+                    "disconnected": True,
+                }
+
             return {
                 "success": history.is_done() and history.is_successful() is not False,
                 "result": history.final_result(),
                 "steps_taken": len(history.history),
                 "error": None,
+                "disconnected": False,
             }
 
         except Exception as e:
-            logger.error(f"Browser task failed: {e}")
+            error_msg = str(e)
+            logger.error(f"Browser task failed: {error_msg}")
+
+            # Detect disconnection from exception
+            if self._is_disconnect_error(error_msg):
+                self._connected = False
+                logger.warning("Browser disconnected (detected from exception)")
+
             return {
                 "success": False,
                 "result": None,
                 "steps_taken": 0,
-                "error": str(e),
+                "error": error_msg,
+                "disconnected": not self._connected,
             }
 
     async def get_page_text(self) -> str:

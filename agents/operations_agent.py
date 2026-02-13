@@ -305,15 +305,34 @@ class OperationsAgent:
                 if rewritten:
                     # --- Step 4: Requeue rewritten content ---
                     action_type = context.get("action_type", "tweet")
+                    is_video = action_type in ("video_distribute", "script_review")
+
+                    if is_video:
+                        # Video rewrites: submit as script_review so the
+                        # rewritten script gets a new video rendered (the old
+                        # video file is stale — it matches the rejected script)
+                        new_action_data = {
+                            "script": rewritten,
+                            "pillar": context.get("pillar", 1),
+                            "theme_title": context.get("theme_title", ""),
+                            "category": context.get("category", ""),
+                            "mood": context.get("mood", "neutral"),
+                            "word_count": len(rewritten.split()),
+                        }
+                        new_action_type = "script_review"
+                    else:
+                        new_action_data = {"action": action_type, "text": rewritten}
+                        new_action_type = action_type
+
                     new_approval_id = self.approval_queue.submit(
                         project_id="david-flip",
                         agent_id="identity-rewrite",
-                        action_type=action_type,
-                        action_data={"action": action_type, "text": rewritten},
+                        action_type=new_action_type,
+                        action_data=new_action_data,
                         context_summary=f"Rewrite of #{approval_id} | Rule: {rule[:80] if rule else 'none'}",
                         cost_estimate=0.001,
                     )
-                    logger.info(f"Rewritten content queued as #{new_approval_id}")
+                    logger.info(f"Rewritten content queued as #{new_approval_id} (type: {new_action_type})")
             except Exception as e:
                 logger.error(f"Failed to rewrite content: {e}")
 
@@ -401,9 +420,26 @@ class OperationsAgent:
         ks = KnowledgeStore()
         identity_rules = ks.get_identity_rules()
 
-        # Determine channel from context
+        # Determine content type — video scripts need different rules than tweets
         action_type = context.get("action_type", "tweet")
-        channel = "twitter" if action_type in ("tweet", "thread", "reply") else "general"
+        is_video = action_type in ("video_distribute", "script_review")
+
+        if is_video:
+            channel = "general"
+            content_rules = (
+                "- Write a 100-200 word video script (30-60 seconds of speech)\n"
+                "- Open with a strong hook in the first sentence\n"
+                "- End with a clear call to action or thought-provoking closer\n"
+                "- NO hashtags (this is spoken, not a tweet)\n"
+                "- Write for spoken delivery — natural rhythm, short sentences\n"
+            )
+            max_tokens = 1000
+        else:
+            channel = "twitter" if action_type in ("tweet", "thread", "reply") else "general"
+            content_rules = (
+                "- Maximum 280 characters for tweets\n"
+            )
+            max_tokens = 200
 
         system_prompt = self.david_personality.get_system_prompt(channel, identity_rules=identity_rules)
 
@@ -413,14 +449,14 @@ class OperationsAgent:
                 f"Rewrite this rejected content. Keep the same topic/angle but fix the issues.\n\n"
                 f"REJECTED TEXT:\n{rejected_text}\n\n"
                 f"Rules:\n"
-                f"- Maximum 280 characters for tweets\n"
+                f"{content_rules}"
                 f"- Stay in character as David Flip\n"
                 f"- Apply ALL identity rules from the system prompt\n\n"
                 f"Return ONLY the rewritten text, nothing else."
             )},
         ]
 
-        response = await self.model_router.invoke(model, messages, max_tokens=200)
+        response = await self.model_router.invoke(model, messages, max_tokens=max_tokens)
         rewritten = response["content"].strip().strip('"').strip("'")
 
         # Validate
@@ -430,7 +466,7 @@ class OperationsAgent:
                 logger.warning(f"Rewrite failed validation: {reason}")
                 return ""
 
-        # Enforce tweet length
+        # Enforce tweet length (only for tweets)
         if channel == "twitter" and len(rewritten) > 280:
             rewritten = rewritten[:277] + "..."
 

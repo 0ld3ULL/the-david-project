@@ -1168,21 +1168,20 @@ class TelegramBot:
         except Exception as e:
             await update.message.reply_text(f"Error generating video: {e}")
 
-    async def _generate_custom_video(self, update: Update, script: str):
-        """Generate a video with custom script."""
+    async def _generate_custom_video(self, update: Update, topic: str):
+        """Generate a video from a topic (LLM writes the full script)."""
         if not self.content_agent:
             await update.message.reply_text("Content Agent not configured.")
             return
 
         await update.message.reply_text(
-            f"Generating custom video...\n"
-            f"Script: {script[:100]}...\n"
-            f"This takes ~2 minutes."
+            f"Writing script for: {topic[:100]}...\n"
+            f"Then rendering video. This takes ~3 minutes."
         )
 
         try:
             result = await self.content_agent.create_video_for_approval(
-                script=script,
+                custom_topic=topic,
                 pillar=1,
             )
 
