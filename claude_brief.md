@@ -1,6 +1,6 @@
 # Claude Session Brief
-*Generated: 2026-02-11 13:21*
-*Memories: 52 total — 52 clear, 0 fuzzy, 0 fading*
+*Generated: 2026-02-13 16:43*
+*Memories: 68 total — 68 clear, 0 fuzzy, 0 fading*
 *Last decay: 2026-02-10T04:36:52.029534*
 *Last reconciliation: never*
 
@@ -103,6 +103,10 @@ Header: x-api-key
 Params: url, text=true for plain text
 *Tags: supadata, api, transcripts, tiktok, youtube*
 
+### Identity rules NOT persisting on VPS *****
+CRITICAL: The identity calibration system (commit 7f8602f) is implemented in code but knowledge.db on VPS is EMPTY - zero identity rules stored. When Jono rejects tweets, rules should be distilled and stored permanently via KnowledgeStore. Either feedback handler not running, files not picked up, or rules never stored. This is the core learning loop for David personality. Jono considers this MAJOR. Must verify feedback pipeline works end-to-end on VPS every session.
+*Tags: identity, vps, bug, critical*
+
 ### Multi-Model Routing *****
 Ollama (local) 15% — heartbeats, formatting, $0
 Haiku 75% — research, classification, ~$0.80/M
@@ -156,10 +160,32 @@ Content Safety (UAE): no specific government targeting, focus Western systems, t
 ### InVideo AI Research - Integration Plan *****
 InVideo AI (invideo.io) researched for long-form info videos (5-15 min). KEY FINDINGS: (1) Voice cloning NOW available - 30sec audio sample, MP3/WAV/M4A, must say 'I give InVideo AI permission to use my voice', paid plans only. (2) NO public API exists - browser-only, cannot automate into DavidSystem pipeline. (3) Pricing: Max plan 0/mo recommended (40 credits, 200 video mins, 5 voice clones, 400GB storage). (4) Can accept full scripts pasted as prompts, AI matches stock footage from 16M+ assets (iStock/Getty/Storyblocks). (5) No native PIP/talking head overlay - would need FFmpeg compositing after export. (6) Partnered with OpenAI Sora 2 + Google VEO 3.1 since Oct 2025. INTEGRATION PLAN: Complementary to existing pipeline - current pipeline handles short-form character content (30-60s Hedra talking head), InVideo handles long-form info videos with stock footage. Workflow: Echo researches topic -> David personality writes long-form script -> Jono reviews -> Jono pastes into InVideo AI browser (manual step ~10-15min) -> exports video -> optional FFmpeg PIP overlay with David talking head -> approval queue -> Oprah schedules distribution. NEEDS BUILDING: (1) Long-form script generator in david_flip.py (current video scripts capped at 80-200 words), (2) InVideo script queue folder + dashboard tab, (3) PIP compositor in postprocessor.py, (4) Import path for uploading InVideo exports back to approval queue.
 
+### browser-use API — key learnings *****
+browser-use v0.11.9 API: (1) BrowserConfig removed — Browser() takes all params directly (headless, allowed_domains, user_data_dir, storage_state, downloads_path, disable_security, keep_alive). (2) Browser has start(), stop(), get_current_page() — no separate session/context. (3) Agent LLM must implement browser_use.llm.base.BaseChatModel Protocol (requires .provider, .name, .model properties). Use browser_use.llm.ChatAnthropic NOT langchain_anthropic.ChatAnthropic. (4) ChatAnthropic param is model= not model_name=. (5) Agent params: task, llm, browser, max_actions_per_step.
+*Tags: browser-use, api, pixel, technical*
+
+### Occy browser auto-restart on disconnect *****
+Added browser health tracking and restart() to occy_browser.py. run_task() detects 5 disconnect patterns, sets _connected=False. Learner checks health before each feature, auto-restarts up to 3x per session. 12 crashed features reset to 0.0 for re-exploration.
+
+### Fixed /video command 3 bugs *****
+Bug1: /video text was literal script (4sec videos). Fixed: passes as custom_topic so LLM writes 100-200 word script. Bug2: _rewrite_content() used tweet rules for videos. Fixed: video rewrites use script rules (max_tokens=1000). Bug3: requeue lost video metadata. Fixed: video rewrites requeue as script_review with metadata preserved. Deployed fa6e253.
+
 ## Current State (manually updated)
+
+### I am Claude D — on the D computer *****
+I am Claude D, the Claude Code instance running on the D computer (ASUS ROG laptop, i7-13650HX, RTX 4060, 16GB RAM, Windows 11). This is the dedicated autonomous AI workstation. Working directory: C:\Projects\Clawdbot (folder rename to TheDavidProject pending). The D computer is separate from Jono main PC. Claude D handles Pixel agent development and Deva voice assistant.
+*Tags: claude-d, identity, d-computer, laptop*
+
+### Pixel renamed to Occy — Software Vision Specialist *****
+Agent formerly known as Pixel is now OCCY (from ocular — the one who sees). Software Vision Specialist who can learn any software by seeing the screen. Currently assigned to Focal ML (video production). Architecture is platform-agnostic — Deva and David can request Occy to learn new tools. Files: personality/occy.py (OccyPersonality), agents/occy_agent.py (OccyAgent), agents/occy_browser.py (FocalBrowser), agents/occy_learner.py (OccyLearner), agents/occy_producer.py (OccyProducer), agents/occy_reviewer.py (OccyReviewer), occy_main.py (OccySystem). Data: data/occy_*.db, data/occy_browser_profile/, data/occy_transcripts/. Entry point: python occy_main.py --visible --explore 5
+*Tags: occy, rename, vision, agent-roster*
 
 ### Git identity not configured on Davids machine *****
 Git user.name and user.email are not set on the David computer (DESKTOP-9S55RR6). Cannot commit or push from here. 13 files are STAGED for the Echo Intelligence Upgrade commit. Commit message saved in commit_msg_echo.txt. Jono needs to either: set git identity here, or commit/push from his PC via Claude J.
+
+### Pixel Agent — Phase 1 nearly complete *****
+Pixel Agent is an autonomous video production specialist that uses Browser Use + Claude to drive Focal ML (focalml.com) browser UI. Phase 1 (Foundation) nearly complete: 8 files created (personality/pixel.py, agents/pixel_browser.py, agents/pixel_learner.py, agents/pixel_producer.py, agents/pixel_reviewer.py, agents/pixel_agent.py, pixel_main.py, config/pixel_curriculum.yaml). Browser launches, Jono logged into Focal ML manually, session persists in data/pixel_browser_profile/. FIXED: browser-use has its own ChatAnthropic at browser_use.llm.ChatAnthropic — do NOT use langchain_anthropic (missing .provider attribute). PENDING: test exploration run after LLM fix, wire Telegram for Pixel commands.
+*Tags: pixel, focal-ml, browser-use, phase1*
 
 ### Project Phase *****
 Phase 1 BUILD IN PROGRESS. Foundation code written, needs API keys and testing.
@@ -197,6 +223,10 @@ Python venv: C:\Projects\TheDavidProject\venv\ — use venv/Scripts/python.exe f
 *Tags: paths, venv, git, worktree*
 
 ## Decisions
+
+### NEVER suggest destructive commands to Jono *****
+CRITICAL LESSON: Never suggest destructive commands (rm -rf, Remove-Item -Recurse -Force, delete folders, drop tables) to Jono without FIRST checking what is in the target. Jono is not a programmer and trusts the instructions completely. Almost caused deletion of the entire Clawdbot repo with all code and .env files. Always: (1) Check contents first, (2) Suggest rename/move instead of delete, (3) Explain what will be lost, (4) Ask for confirmation on anything destructive.
+*Tags: safety, jono, instructions, lesson*
 
 ### Build Our Own, Not OpenClaw *****
 Decision: Build our own agent system, not use OpenClaw directly.
@@ -257,6 +287,10 @@ youtube-transcript-api v2+ uses instance method: YouTubeTranscriptApi().fetch(vi
 Planned integration of Coplay unity-mcp server (HTTP JSON-RPC at localhost:8080/mcp) to give Deva direct Unity Editor control via voice. Architecture: 10 Claude function-calling tools mirroring MCP manage_* pattern (unity_gameobject, unity_component, unity_scene, unity_editor, unity_find, unity_material, unity_script, unity_asset, unity_console, unity_prefab). UnityBridge class with cached health checks and conditional schema injection. Files: NEW voice/tools/unity_tools.py (~400 lines), MODIFY tool_executor.py (add unity bridge + 10 wrappers), MODIFY deva_voice.py (unity connect/disconnect/status commands), MODIFY voice/tools/__init__.py (export UnityBridge), MODIFY personality/deva.py (update capabilities). Key decisions: sync HTTP via httpx, 30s health cache, graceful degradation, schemas only injected when MCP reachable. Plan approved, ready to implement.
 *Tags: deva, unity, mcp, plan, tools*
 
+### Feb 13 — Pixel first successful exploration *****
+Pixel Agent completed first successful exploration of Focal ML. Fixed browser-use LLM issue (use browser_use.llm.ChatAnthropic not langchain). Pixel ran 5-minute visible exploration: cataloged 20+ UI elements on paste_script page, found 3 input modes (Idea/Script/JSON), noted 1121 credits on account, stored 2 knowledge entries in data/pixel_knowledge.db. Full Phase 1 + Phase 2 core loop working end-to-end. TODO: improve knowledge storage to distill clean summaries instead of raw AgentHistoryList dumps.
+*Tags: pixel, focal-ml, exploration, milestone*
+
 ### Video pipeline end-to-end working *****
 Runway API key added to VPS .env. Fixed doubled path bug in cinematic_video.py concat.txt -- used filename only instead of full relative path. Pipeline runs end-to-end: Leonardo image, Runway animation, ElevenLabs voice, FFmpeg assembly. Current output is just 1 scene 5 seconds. Needs multi-scene editing, transitions, voice sync, captions. Big TODO next session.
 
@@ -284,6 +318,9 @@ Added dual scoring rubrics to evaluator. Expanded keywords to ~150.
 Added 5 YouTube channels and 6 TikTok accounts to monitoring.
 Commits: 1b64c72, eb9b24c
 *Tags: transcripts, research, scraper*
+
+### Replied to Mr_Nubee and killed stale VPS process *****
+Posted David reply to @Mr_Nubee declining collaboration (tweet 2022286541750481386). Killed stale duplicate main.py PID 204214 on VPS causing Telegram 409 conflicts. Twitter read endpoints all 401 — bearer token still expired. Only OAuth write works.
 
 ### Feb 9 — Transcript Research (3 Videos) *****
 Fetched transcripts for 3 videos:
@@ -329,6 +366,23 @@ Content calendar in content/content_calendar.py.
 Telegram /video command working. Twitter video posting working.
 *Tags: stories, content, calendar*
 
+## --Significance
+
+### --category
+creative
+
+### --category
+creative
+
+### --category
+deployment
+
+### --category
+tools
+
+### --category
+deployment
+
 ## Architecture
 
 ### Identity Calibration System Implemented
@@ -338,6 +392,11 @@ Implemented the David Identity Calibration System across 6 files. When Jono reje
 
 ### Fixed 7 bugs in cinematic video pipeline
 Fixed all 7 bugs: (1) Scene.image_url for Runway, (2) await on_progress callbacks, (3) FFmpeg map instead of amix for silent video, (4) MusicLibrary().get_track, (5) use_browser_music=False, (6) async _run_ffmpeg helper, (7) generate_script() with ModelRouter + video_script personality. Ready for Wall verification.
+
+## Tools
+
+### Focal ML — AI Video Creation Platform
+Focal ML (focalml.com) — Browser-based AI video creation. NO API. Script-to-video, chat-based editing, timeline editing, character/location consistency. Models: Veo, Seedance, Kling, Minimax (video), GPT Image, Flux Klein (images), ElevenLabs + OpenAI (voices). Pricing: Free/Personal 0/Standard 0/Pro 00 per month. Replaces InVideo AI. KEY: No API means MUST be driven by computer-use agent on ASUS ROG laptop. Catalyst for building autonomous browser control.
 
 ---
 ## Quick Reference
