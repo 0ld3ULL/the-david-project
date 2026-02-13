@@ -62,9 +62,8 @@ class FocalBrowser:
     ):
         self.headless = headless
         self.browser = None
-        self.context = None
+        self._session = None
         self.page = None
-        self._agent = None
         self._running = False
 
         # Build domain allowlist
@@ -84,27 +83,30 @@ class FocalBrowser:
         Returns True if browser started successfully and Focal is accessible.
         """
         try:
-            from browser_use import Agent, Browser, BrowserConfig
+            from browser_use import Browser
 
-            config = BrowserConfig(
-                headless=self.headless,
-                chrome_instance_path=None,  # Use Playwright's Chromium
-                disable_security=False,
-            )
-
-            self.browser = Browser(config=config)
-
-            # Create browser context with persistent storage
-            context_params = {
-                "storage_state": str(BROWSER_PROFILE_DIR / "state.json")
-                if (BROWSER_PROFILE_DIR / "state.json").exists()
-                else None,
+            # Build Browser kwargs — the new API takes everything directly
+            browser_kwargs = {
+                "headless": self.headless,
+                "allowed_domains": self.allowed_domains,
+                "downloads_path": str(DOWNLOAD_DIR),
+                "disable_security": False,
+                "keep_alive": True,
             }
 
-            self.context = await self.browser.new_context(**{
-                k: v for k, v in context_params.items() if v is not None
-            })
-            self.page = await self.context.new_page()
+            # Use persistent user data dir for cookie/session persistence
+            browser_kwargs["user_data_dir"] = str(BROWSER_PROFILE_DIR)
+
+            # Also load storage state if saved from a previous session
+            state_file = BROWSER_PROFILE_DIR / "state.json"
+            if state_file.exists():
+                browser_kwargs["storage_state"] = str(state_file)
+
+            self.browser = Browser(**browser_kwargs)
+
+            # Start the browser session to get a page
+            self._session = await self.browser.new_context()
+            self.page = await self._session.get_current_page()
             self._running = True
 
             logger.info(
@@ -112,9 +114,10 @@ class FocalBrowser:
             )
             return True
 
-        except ImportError:
+        except ImportError as e:
             logger.error(
-                "browser-use not installed. Run: pip install browser-use langchain-anthropic && playwright install chromium"
+                f"browser-use import failed: {e}. "
+                "Run: pip install browser-use langchain-anthropic && playwright install chromium"
             )
             return False
         except Exception as e:
@@ -128,15 +131,18 @@ class FocalBrowser:
 
         try:
             # Save session state for future runs
-            if self.context:
-                state = await self.context.storage_state()
-                state_path = BROWSER_PROFILE_DIR / "state.json"
-                with open(state_path, "w") as f:
-                    json.dump(state, f)
-                logger.info(f"Browser state saved to {state_path}")
+            if self._session:
+                try:
+                    state = await self._session.storage_state()
+                    state_path = BROWSER_PROFILE_DIR / "state.json"
+                    with open(state_path, "w") as f:
+                        json.dump(state, f)
+                    logger.info(f"Browser state saved to {state_path}")
+                except Exception:
+                    pass  # storage_state may not be available on all session types
 
-            if self.context:
-                await self.context.close()
+                await self._session.close()
+
             if self.browser:
                 await self.browser.close()
 
@@ -145,7 +151,7 @@ class FocalBrowser:
         finally:
             self._running = False
             self.browser = None
-            self.context = None
+            self._session = None
             self.page = None
             logger.info("Browser stopped")
 
@@ -155,16 +161,17 @@ class FocalBrowser:
 
         Navigates to Focal ML and checks if we're logged in or at a login page.
         """
-        if not self._running or not self.page:
+        if not self._running or not self._session:
             return False
 
         try:
-            await self.page.goto("https://focalml.com", timeout=30000)
-            await self.page.wait_for_load_state("networkidle", timeout=15000)
+            page = await self._session.get_current_page()
+            await page.goto("https://focalml.com", timeout=30000)
+            await page.wait_for_load_state("networkidle", timeout=15000)
 
             # Check URL and page content for login indicators
-            url = self.page.url
-            content = await self.page.content()
+            url = page.url
+            content = await page.content()
 
             # If redirected to login/signup page, not logged in
             login_indicators = ["login", "sign-in", "signin", "signup", "sign-up"]
@@ -193,7 +200,7 @@ class FocalBrowser:
 
         Returns True if navigation succeeded and domain is allowed.
         """
-        if not self._running or not self.page:
+        if not self._running or not self._session:
             logger.error("Browser not running")
             return False
 
@@ -207,8 +214,9 @@ class FocalBrowser:
             return False
 
         try:
-            await self.page.goto(url, timeout=30000)
-            await self.page.wait_for_load_state("networkidle", timeout=15000)
+            page = await self._session.get_current_page()
+            await page.goto(url, timeout=30000)
+            await page.wait_for_load_state("networkidle", timeout=15000)
             logger.info(f"Navigated to: {url}")
             return True
         except Exception as e:
@@ -221,7 +229,7 @@ class FocalBrowser:
 
         Returns path to saved screenshot, or None on failure.
         """
-        if not self._running or not self.page:
+        if not self._running or not self._session:
             return None
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -229,7 +237,8 @@ class FocalBrowser:
         filepath = SCREENSHOT_DIR / filename
 
         try:
-            await self.page.screenshot(path=str(filepath), full_page=False)
+            page = await self._session.get_current_page()
+            await page.screenshot(path=str(filepath), full_page=False)
             logger.info(f"Screenshot saved: {filepath}")
             return filepath
         except Exception as e:
@@ -268,6 +277,7 @@ class FocalBrowser:
                 task=task,
                 llm=llm,
                 browser=self.browser,
+                browser_session=self._session,
                 max_actions_per_step=5,
             )
 
@@ -291,18 +301,23 @@ class FocalBrowser:
 
     async def get_page_text(self) -> str:
         """Get visible text content of the current page."""
-        if not self._running or not self.page:
+        if not self._running or not self._session:
             return ""
         try:
-            return await self.page.inner_text("body")
+            page = await self._session.get_current_page()
+            return await page.inner_text("body")
         except Exception:
             return ""
 
     async def get_page_url(self) -> str:
         """Get current page URL."""
-        if not self._running or not self.page:
+        if not self._running or not self._session:
             return ""
-        return self.page.url
+        try:
+            page = await self._session.get_current_page()
+            return page.url
+        except Exception:
+            return ""
 
     # ------------------------------------------------------------------
     # Focal ML — Specific Actions
