@@ -1,0 +1,401 @@
+"""
+Pixel Learning Engine — Systematic Focal ML feature exploration.
+
+Pixel doesn't guess. It explores features methodically, documents everything,
+and builds a searchable knowledge base of what works, what doesn't, and how
+much it costs.
+
+Exploration cycle:
+1. Select next feature (priority: unexplored > partial > job-relevant > random)
+2. Navigate to the feature in Focal ML
+3. Screenshot the UI — send to Claude Vision for element identification
+4. Try each option, document results
+5. Store findings in KnowledgeStore
+6. Update confidence score in feature map
+7. Report to Jono via Telegram
+
+Requires: pixel_browser.py, KnowledgeStore, pixel_curriculum.yaml
+"""
+
+import asyncio
+import json
+import logging
+import os
+import random
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+import yaml
+
+logger = logging.getLogger(__name__)
+
+CURRICULUM_PATH = Path("config/pixel_curriculum.yaml")
+FEATURE_MAP_PATH = Path("data/pixel_feature_map.json")
+
+
+class PixelLearner:
+    """
+    Systematic feature exploration engine for Focal ML.
+
+    Reads the curriculum (what to learn), selects features by priority,
+    explores them in the browser, and stores findings in the knowledge base.
+    """
+
+    def __init__(self, browser, knowledge_store, audit_log=None):
+        """
+        Args:
+            browser: FocalBrowser instance
+            knowledge_store: KnowledgeStore for permanent findings
+            audit_log: AuditLog for tracking exploration actions
+        """
+        self.browser = browser
+        self.knowledge = knowledge_store
+        self.audit_log = audit_log
+        self.feature_map = self._load_feature_map()
+
+    def _load_feature_map(self) -> dict:
+        """
+        Load feature map from saved state, or initialize from curriculum.
+
+        The feature map tracks learning progress. It starts from the
+        curriculum YAML and gets updated as Pixel explores.
+        """
+        # Try saved state first (preserves progress)
+        if FEATURE_MAP_PATH.exists():
+            try:
+                with open(FEATURE_MAP_PATH) as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning(f"Corrupted feature map, reinitializing: {e}")
+
+        # Initialize from curriculum
+        if not CURRICULUM_PATH.exists():
+            logger.warning("No curriculum found — starting with empty feature map")
+            return {"categories": {}}
+
+        with open(CURRICULUM_PATH) as f:
+            curriculum = yaml.safe_load(f)
+
+        # Convert to runtime format with tracking fields
+        feature_map = {"categories": {}}
+        for cat_name, cat_data in curriculum.get("categories", {}).items():
+            feature_map["categories"][cat_name] = {
+                "description": cat_data.get("description", ""),
+                "features": [],
+            }
+            for feat in cat_data.get("features", []):
+                feature_map["categories"][cat_name]["features"].append({
+                    "name": feat["name"],
+                    "description": feat["description"],
+                    "confidence": feat.get("confidence", 0.0),
+                    "priority": feat.get("priority", 5),
+                    "notes": feat.get("notes", ""),
+                    "explored_count": 0,
+                    "last_explored": None,
+                    "knowledge_ids": [],  # IDs of related KnowledgeStore entries
+                })
+
+        self._save_feature_map(feature_map)
+        return feature_map
+
+    def _save_feature_map(self, feature_map: dict = None):
+        """Save feature map state to disk."""
+        if feature_map is None:
+            feature_map = self.feature_map
+
+        FEATURE_MAP_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(FEATURE_MAP_PATH, "w") as f:
+            json.dump(feature_map, f, indent=2)
+
+    def _select_next_feature(self, job_relevant: list[str] = None) -> tuple[str, dict] | None:
+        """
+        Select the next feature to explore.
+
+        Priority order:
+        1. Unexplored (confidence 0.0) with highest priority
+        2. Partially explored (confidence < 0.5) with highest priority
+        3. Job-relevant features (if a job needs specific skills)
+        4. Random deep-dive on a known feature
+
+        Returns:
+            (category_name, feature_dict) or None if all mastered
+        """
+        unexplored = []
+        partial = []
+        relevant = []
+        deep_dive = []
+
+        for cat_name, cat_data in self.feature_map.get("categories", {}).items():
+            for feat in cat_data.get("features", []):
+                entry = (cat_name, feat)
+
+                if feat["confidence"] == 0.0:
+                    unexplored.append(entry)
+                elif feat["confidence"] < 0.5:
+                    partial.append(entry)
+                elif feat["confidence"] < 0.9:
+                    deep_dive.append(entry)
+
+                # Check job relevance
+                if job_relevant and feat["name"] in job_relevant:
+                    if feat["confidence"] < 0.7:
+                        relevant.append(entry)
+
+        # Pick from highest priority group
+        for group in [unexplored, partial, relevant, deep_dive]:
+            if group:
+                # Sort by priority (lower number = higher priority)
+                group.sort(key=lambda x: x[1]["priority"])
+                return group[0]
+
+        logger.info("All features at confidence >= 0.9 — exploration complete!")
+        return None
+
+    async def explore_feature(self, category: str, feature: dict) -> dict:
+        """
+        Explore a single feature in Focal ML.
+
+        Steps:
+        1. Navigate to the feature area
+        2. Take screenshot for UI mapping
+        3. Identify UI elements via Claude Vision
+        4. Try available options
+        5. Document findings
+
+        Returns:
+            dict with 'success', 'findings', 'confidence_delta', 'credits_used'
+        """
+        feature_name = feature["name"]
+        logger.info(f"Exploring: [{category}] {feature_name}")
+
+        findings = []
+        credits_before = await self.browser.get_credit_balance()
+
+        # Step 1: Navigate to the feature
+        nav_result = await self.browser.run_task(
+            f"Navigate to the '{feature_name}' feature area in Focal ML. "
+            f"This is in the '{category}' category. "
+            f"Feature description: {feature['description']}. "
+            f"Find and open this feature's UI."
+        )
+
+        if not nav_result["success"]:
+            findings.append(f"Could not navigate to {feature_name}: {nav_result.get('error')}")
+            return {
+                "success": False,
+                "findings": findings,
+                "confidence_delta": 0.05,  # Learned that navigation failed
+                "credits_used": 0,
+            }
+
+        # Step 2: Screenshot for UI mapping
+        screenshot_path = await self.browser.take_screenshot(f"explore_{feature_name}")
+
+        # Step 3: Identify UI elements (via Browser Use task)
+        ui_result = await self.browser.run_task(
+            f"Look at the current page. You're exploring the '{feature_name}' feature. "
+            f"Identify every button, dropdown, input field, slider, and toggle visible. "
+            f"List each one with its label, type, and current value/state. "
+            f"Be thorough — catalog everything you can see."
+        )
+
+        if ui_result["success"]:
+            findings.append(f"UI elements: {ui_result['result']}")
+
+            # Store UI mapping
+            self.knowledge.add(
+                category="technical",
+                topic=f"Focal ML UI: {feature_name}",
+                content=ui_result["result"][:2000],
+                source="pixel_exploration",
+                confidence=0.7,
+                tags=["ui_element", category, feature_name],
+            )
+
+        # Step 4: Try available options
+        explore_result = await self.browser.run_task(
+            f"You're exploring the '{feature_name}' feature in Focal ML. "
+            f"Try the available options one by one: "
+            f"- Click each dropdown and note the choices "
+            f"- Check toggle states "
+            f"- Note any tooltips or help text "
+            f"- Do NOT submit anything that costs credits yet "
+            f"Report what you found about each option."
+        )
+
+        if explore_result["success"]:
+            findings.append(f"Options explored: {explore_result['result']}")
+
+        # Step 5: Document findings
+        credits_after = await self.browser.get_credit_balance()
+        credits_used = 0
+        if credits_before is not None and credits_after is not None:
+            credits_used = max(0, credits_before - credits_after)
+
+        # Store comprehensive finding
+        finding_text = "\n".join(findings)
+        knowledge_id = self.knowledge.add(
+            category="technical",
+            topic=f"Focal ML feature: {feature_name}",
+            content=finding_text[:4000],
+            source="pixel_exploration",
+            confidence=0.8,
+            tags=["feature_exploration", category, feature_name],
+        )
+
+        # Update feature map
+        confidence_delta = 0.3 if nav_result["success"] and ui_result["success"] else 0.1
+        self._update_feature_progress(category, feature_name, confidence_delta, knowledge_id)
+
+        if self.audit_log:
+            self.audit_log.log(
+                "pixel", "info", "exploration",
+                f"Explored {feature_name}",
+                details=f"confidence_delta={confidence_delta}, credits={credits_used}",
+            )
+
+        return {
+            "success": True,
+            "findings": findings,
+            "confidence_delta": confidence_delta,
+            "credits_used": credits_used,
+        }
+
+    def _update_feature_progress(
+        self, category: str, feature_name: str,
+        confidence_delta: float, knowledge_id: int = None,
+    ):
+        """Update a feature's confidence and tracking info in the feature map."""
+        for feat in self.feature_map.get("categories", {}).get(category, {}).get("features", []):
+            if feat["name"] == feature_name:
+                feat["confidence"] = min(1.0, feat["confidence"] + confidence_delta)
+                feat["explored_count"] = feat.get("explored_count", 0) + 1
+                feat["last_explored"] = datetime.now().isoformat()
+                if knowledge_id:
+                    feat.setdefault("knowledge_ids", []).append(knowledge_id)
+                break
+
+        self._save_feature_map()
+
+    async def run_exploration_session(self, duration_minutes: int = 30) -> dict:
+        """
+        Run a timed exploration session.
+
+        Explores features one by one until time runs out.
+
+        Returns:
+            dict with 'features_explored', 'knowledge_entries', 'total_credits',
+            'session_duration_minutes'
+        """
+        start = datetime.now()
+        deadline = start.timestamp() + (duration_minutes * 60)
+
+        features_explored = 0
+        knowledge_entries = 0
+        total_credits = 0
+        explored_features = []
+
+        logger.info(f"Starting {duration_minutes}-minute exploration session")
+
+        while datetime.now().timestamp() < deadline:
+            # Select next feature
+            selection = self._select_next_feature()
+            if selection is None:
+                logger.info("All features explored — ending session early")
+                break
+
+            category, feature = selection
+            logger.info(
+                f"Session: Exploring [{category}] {feature['name']} "
+                f"(confidence: {feature['confidence']:.1f})"
+            )
+
+            # Explore it
+            result = await self.explore_feature(category, feature)
+
+            features_explored += 1
+            total_credits += result.get("credits_used", 0)
+            knowledge_entries += len(result.get("findings", []))
+            explored_features.append({
+                "category": category,
+                "feature": feature["name"],
+                "success": result["success"],
+                "confidence_delta": result["confidence_delta"],
+            })
+
+            # Brief pause between features
+            await asyncio.sleep(2)
+
+        duration_actual = (datetime.now() - start).total_seconds() / 60
+
+        summary = {
+            "features_explored": features_explored,
+            "knowledge_entries": knowledge_entries,
+            "total_credits": total_credits,
+            "session_duration_minutes": round(duration_actual, 1),
+            "explored": explored_features,
+        }
+
+        logger.info(
+            f"Exploration session complete: {features_explored} features, "
+            f"{knowledge_entries} knowledge entries, {total_credits} credits, "
+            f"{duration_actual:.1f} minutes"
+        )
+
+        return summary
+
+    def document_finding(
+        self, category: str, topic: str, content: str, tags: list = None,
+    ) -> int:
+        """Manually document a finding (for ad-hoc discoveries)."""
+        return self.knowledge.add(
+            category=category,
+            topic=topic,
+            content=content,
+            source="pixel_manual",
+            confidence=0.9,
+            tags=tags or ["manual_finding"],
+        )
+
+    def get_progress(self) -> dict:
+        """
+        Get exploration progress statistics.
+
+        Returns:
+            dict with total features, explored, mastered, by_category breakdown
+        """
+        total = 0
+        explored = 0  # confidence > 0
+        proficient = 0  # confidence >= 0.7
+        mastered = 0  # confidence >= 0.9
+        by_category = {}
+
+        for cat_name, cat_data in self.feature_map.get("categories", {}).items():
+            cat_total = 0
+            cat_explored = 0
+            for feat in cat_data.get("features", []):
+                cat_total += 1
+                total += 1
+                if feat["confidence"] > 0:
+                    explored += 1
+                    cat_explored += 1
+                if feat["confidence"] >= 0.7:
+                    proficient += 1
+                if feat["confidence"] >= 0.9:
+                    mastered += 1
+
+            by_category[cat_name] = {
+                "total": cat_total,
+                "explored": cat_explored,
+                "progress": f"{cat_explored}/{cat_total}",
+            }
+
+        return {
+            "total_features": total,
+            "explored": explored,
+            "proficient": proficient,
+            "mastered": mastered,
+            "progress_pct": round(explored / total * 100, 1) if total > 0 else 0,
+            "by_category": by_category,
+        }

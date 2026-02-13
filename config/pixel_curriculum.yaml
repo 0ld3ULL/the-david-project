@@ -1,0 +1,285 @@
+# Pixel Learning Curriculum — Focal ML Feature Map
+#
+# Every known Focal ML feature, organized by category.
+# Pixel explores these systematically, updating confidence as it learns.
+#
+# Confidence levels:
+#   0.0 — Never explored
+#   0.1-0.3 — Seen it, basic understanding
+#   0.4-0.6 — Can use it, knows the options
+#   0.7-0.8 — Proficient, knows best practices
+#   0.9-1.0 — Mastered, knows edge cases and optimization
+
+categories:
+  script_input:
+    description: "Getting scripts/prompts into Focal ML"
+    features:
+      - name: paste_script
+        description: "Paste a full script into the editor"
+        confidence: 0.0
+        priority: 1  # Critical — needed for every video
+        notes: ""
+
+      - name: chat_editing
+        description: "Use chat interface to modify/refine script"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: prompt_templates
+        description: "Pre-built templates or starting points"
+        confidence: 0.0
+        priority: 3
+        notes: ""
+
+  video_models:
+    description: "AI video generation models available in Focal"
+    features:
+      - name: seedance
+        description: "Seedance video model — capabilities, quality, cost"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: veo
+        description: "Google Veo model — capabilities, quality, cost"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: kling
+        description: "Kling model — capabilities, quality, cost"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: minimax
+        description: "Minimax model — capabilities, quality, cost"
+        confidence: 0.0
+        priority: 3
+        notes: ""
+
+      - name: luma
+        description: "Luma model — capabilities, quality, cost"
+        confidence: 0.0
+        priority: 3
+        notes: ""
+
+      - name: runway
+        description: "Runway model — capabilities, quality, cost"
+        confidence: 0.0
+        priority: 3
+        notes: ""
+
+      - name: model_comparison
+        description: "Side-by-side comparison of model outputs for same prompt"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+  characters:
+    description: "Character creation and consistency"
+    features:
+      - name: create_character
+        description: "Create a new character from reference image or description"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: save_character
+        description: "Save character for reuse across projects"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: character_consistency
+        description: "Maintain character appearance across scenes"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: character_library
+        description: "Browse and manage saved characters"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+  locations:
+    description: "Location/background creation and management"
+    features:
+      - name: create_location
+        description: "Create a new location/background"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: save_location
+        description: "Save location for reuse"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: location_consistency
+        description: "Maintain location appearance across scenes"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: location_evolution
+        description: "Change location over time (day/night, weather)"
+        confidence: 0.0
+        priority: 3
+        notes: ""
+
+  voice_tts:
+    description: "Voice and text-to-speech options"
+    features:
+      - name: elevenlabs_voices
+        description: "ElevenLabs voice options and quality"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: openai_voices
+        description: "OpenAI TTS voice options and quality"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: voice_assignment
+        description: "Assign voices to characters"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: voice_timing
+        description: "Control voice timing and pacing"
+        confidence: 0.0
+        priority: 3
+        notes: ""
+
+  editing:
+    description: "Video editing capabilities within Focal"
+    features:
+      - name: chat_commands
+        description: "Edit video via chat commands (add scene, change shot, etc.)"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: timeline_editing
+        description: "Direct timeline manipulation"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: transitions
+        description: "Scene transition types and options"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: shot_types
+        description: "Camera angles, zooms, pans available"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: music_audio
+        description: "Background music and audio options"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: text_overlays
+        description: "Adding text, titles, captions"
+        confidence: 0.0
+        priority: 3
+        notes: ""
+
+  rendering:
+    description: "Video rendering and export"
+    features:
+      - name: quality_settings
+        description: "Resolution, FPS, quality presets"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: export_formats
+        description: "Available export formats (MP4, etc.)"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: render_progress
+        description: "Monitor render progress and estimated time"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: download
+        description: "Download rendered video"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: render_queue
+        description: "Queue multiple renders"
+        confidence: 0.0
+        priority: 3
+        notes: ""
+
+  credits:
+    description: "Credit system and cost optimization"
+    features:
+      - name: credit_balance
+        description: "Check current credit balance"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: cost_per_model
+        description: "Credits per second for each video model"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: cost_optimization
+        description: "Strategies to minimize credit usage"
+        confidence: 0.0
+        priority: 2
+        notes: ""
+
+      - name: credit_purchase
+        description: "How to purchase additional credits"
+        confidence: 0.0
+        priority: 3
+        notes: ""
+
+  ui_navigation:
+    description: "General UI navigation and layout"
+    features:
+      - name: main_menu
+        description: "Main navigation menu structure"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: project_management
+        description: "Create, open, delete projects"
+        confidence: 0.0
+        priority: 1
+        notes: ""
+
+      - name: settings
+        description: "Account and project settings"
+        confidence: 0.0
+        priority: 3
+        notes: ""
+
+      - name: keyboard_shortcuts
+        description: "Available keyboard shortcuts"
+        confidence: 0.0
+        priority: 3
+        notes: ""
