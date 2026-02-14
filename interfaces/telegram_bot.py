@@ -2054,6 +2054,14 @@ class TelegramBot:
             return
 
         if action == "approve":
+            # Idempotency: check if already approved/executed to prevent duplicate processing
+            existing = self.queue.get_by_id(approval_id)
+            if existing and existing.get("status") != "pending":
+                await query.edit_message_text(
+                    f"#{approval_id} already {existing.get('status')} — no duplicate action taken."
+                )
+                return
+
             result = self.queue.approve(approval_id)
             self.audit.log(
                 result.get("project_id", "unknown"), "info", "approval",

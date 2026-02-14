@@ -362,6 +362,7 @@ class DavidSystem:
         # to schedule coroutines safely from threads.
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
+        from apscheduler.triggers.date import DateTrigger
         from apscheduler.triggers.interval import IntervalTrigger
         self._loop = asyncio.get_running_loop()
         self.cron_scheduler = AsyncIOScheduler()
@@ -387,21 +388,20 @@ class DavidSystem:
             id="warm_research",
         )
 
-        # SPREAD TWEETS: Generate 1 tweet 30min before each of 6 daily slots
-        # Slots: 12, 15, 18, 21, 0, 3 UTC (7am–10pm ET, 3h spacing)
-        # = 6 tweets/day for Jono to review and approve
-        tweet_schedule = [
-            (12, 11, 30), (15, 14, 30), (18, 17, 30),
-            (21, 20, 30), (0, 23, 30), (3, 2, 30),
-        ]
-        for slot_hour, gen_hour, gen_min in tweet_schedule:
-            self.cron_scheduler.add_job(
-                lambda h=slot_hour: asyncio.run_coroutine_threadsafe(
-                    self._run_single_tweet(target_hour=h), self._loop
-                ),
-                trigger=CronTrigger(hour=gen_hour, minute=gen_min),
-                id=f"tweet_slot_{slot_hour}",
-            )
+        # DAILY TWEET PLANNER: Momo plans the day's schedule at 6:00 UTC
+        # Replaces the old 6-fixed-slot system with 4-8 organically spaced tweets
+        self.cron_scheduler.add_job(
+            lambda: asyncio.run_coroutine_threadsafe(self._plan_and_schedule_tweets(), self._loop),
+            trigger=CronTrigger(hour=6, minute=0),
+            id="daily_tweet_planner",
+        )
+
+        # Also run 30s after boot (catches restarts, first-time runs)
+        self.cron_scheduler.add_job(
+            lambda: asyncio.run_coroutine_threadsafe(self._plan_and_schedule_tweets(), self._loop),
+            trigger=DateTrigger(run_date=datetime.now() + timedelta(seconds=30)),
+            id="tweet_planner_startup",
+        )
 
         # DAILY VIDEO: Disabled until operator is confident in quality
         # Uncomment to enable automated daily video generation:
@@ -475,7 +475,7 @@ class DavidSystem:
         )
 
         self.cron_scheduler.start()
-        logger.info("Cron: Research 2:00 UTC | Tweets 6/day (11:30/14:30/17:30/20:30/23:30/2:30 UTC) | Hot every 3h | Warm every 10h")
+        logger.info("Cron: Research 2:00 UTC | Tweet planner 6:00 UTC (Momo 4-8/day organic) | Hot every 3h | Warm every 10h")
         logger.info("Cron: Momentum — Mentions every 15m | Reply targets every 6h | Performance every 4h | Report 7:00 UTC")
         logger.info("Cron: David Scale — Sentiment Sun 06:00 | Scoring Sun 07:00 | Tweets Sun 08:00")
 
@@ -598,11 +598,102 @@ class DavidSystem:
             )
             return {"error": str(e)}
 
-    async def _run_single_tweet(self, target_hour: int = None):
-        """Generate 1 tweet for the next optimal slot.
+    async def _plan_and_schedule_tweets(self):
+        """Have Momo plan today's tweet schedule, then schedule generation jobs.
 
-        Runs 30min before each slot (12:30, 15:30, 18:30, 21:30 UTC).
-        Generates tweet → sends to Jono via Telegram with Approve/Reject buttons.
+        Called daily at 6:00 UTC and 30s after boot.
+        For each planned slot, schedules a DateTrigger job 30 minutes before
+        to generate a tweet for Jono to review.
+        """
+        if self.kill_switch.is_active:
+            logger.info("Skipping tweet planning - kill switch active")
+            return
+
+        try:
+            plan = self.growth_agent.plan_daily_schedule()
+            slot_times = plan.get("slot_times", [])
+            count = plan.get("planned_count", 0)
+
+            if not slot_times:
+                logger.warning("Momo returned empty schedule — no tweets planned")
+                return
+
+            # Schedule a generation job 30min before each slot
+            from apscheduler.triggers.date import DateTrigger
+            now = datetime.now()
+            scheduled_count = 0
+
+            for i, slot_str in enumerate(slot_times):
+                slot_dt = datetime.fromisoformat(slot_str)
+                # Make naive for APScheduler comparison (APScheduler uses local time)
+                if slot_dt.tzinfo is not None:
+                    slot_dt = slot_dt.replace(tzinfo=None)
+
+                gen_time = slot_dt - timedelta(minutes=30)
+
+                # Skip slots that are already past
+                if gen_time < now:
+                    logger.info(f"  Slot {i+1} ({slot_str}) — gen time already passed, skipping")
+                    continue
+
+                slot_label = slot_dt.strftime("%H:%M UTC")
+                job_id = f"tweet_gen_{plan['schedule_date']}_{i}"
+
+                # Remove old job if exists (idempotent re-planning)
+                try:
+                    self.cron_scheduler.remove_job(job_id)
+                except Exception:
+                    pass
+
+                self.cron_scheduler.add_job(
+                    lambda lbl=slot_label: asyncio.run_coroutine_threadsafe(
+                        self._run_single_tweet(slot_label=lbl), self._loop
+                    ),
+                    trigger=DateTrigger(run_date=gen_time),
+                    id=job_id,
+                )
+                scheduled_count += 1
+                logger.info(f"  Slot {i+1}: generate at {gen_time.strftime('%H:%M')} → post at {slot_label}")
+
+            logger.info(f"Momo planned {count} tweets, {scheduled_count} generation jobs scheduled")
+
+            # Send summary to Jono via Telegram
+            if self.telegram and self.telegram.app:
+                try:
+                    slot_list = "\n".join(
+                        f"  {i+1}. {datetime.fromisoformat(s).strftime('%H:%M UTC')}"
+                        for i, s in enumerate(slot_times)
+                    )
+                    await self.telegram.app.bot.send_message(
+                        chat_id=self.telegram.operator_id,
+                        text=(
+                            f"MOMO'S PLAN — {count} tweets today\n\n"
+                            f"{slot_list}\n\n"
+                            f"Tweets will be generated 30min before each slot "
+                            f"for your review."
+                        ),
+                    )
+                except Exception:
+                    pass
+
+            self.audit_log.log(
+                "david-flip", "info", "tweet_plan",
+                f"Momo planned {count} tweets: {', '.join(datetime.fromisoformat(s).strftime('%H:%M') for s in slot_times)}",
+            )
+
+        except Exception as e:
+            logger.error(f"Tweet planning failed: {e}")
+            self.audit_log.log(
+                "david-flip", "reject", "tweet_plan",
+                f"Planning failed: {e}",
+                success=False,
+            )
+
+    async def _run_single_tweet(self, target_hour: int = None, slot_label: str = None):
+        """Generate 1 tweet for a planned slot.
+
+        Called 30min before each of Momo's planned slots.
+        Generates tweet -> sends to Jono via Telegram with Approve/Reject buttons.
         """
         if self.kill_switch.is_active:
             logger.info("Skipping tweet generation - kill switch active")
@@ -610,7 +701,8 @@ class DavidSystem:
 
         try:
             from run_daily_tweets import generate_tweets
-            slot_label = f"{target_hour}:00 UTC" if target_hour else "next slot"
+            if not slot_label:
+                slot_label = f"{target_hour}:00 UTC" if target_hour else "next slot"
             logger.info(f"Generating tweet for {slot_label}...")
             await generate_tweets(count=1)
 
@@ -644,7 +736,7 @@ class DavidSystem:
                     pass
 
         except Exception as e:
-            logger.error(f"Tweet generation failed for {target_hour}: {e}")
+            logger.error(f"Tweet generation failed for {slot_label}: {e}")
             self.audit_log.log(
                 "david-flip", "reject", "tweets",
                 f"Tweet generation failed: {e}",

@@ -30,11 +30,15 @@ class ContentAgent:
     Themes and ratios are pulled from DavidFlipPersonality.
     """
 
+    # Max recent themes to track (prevents reuse across separate calls)
+    RECENT_THEME_HISTORY = 20
+
     def __init__(self, approval_queue=None, scheduler=None, personality=None):
         self.approval_queue = approval_queue
         self.scheduler = scheduler
         self._video_creator = None
         self._model_router = None
+        self._recent_theme_ids = []  # Track recently used themes to prevent duplicates
 
         # Load David Flip personality
         self.personality = personality or self._load_personality()
@@ -85,28 +89,43 @@ class ContentAgent:
         cat_info = self.content_categories.get(category, {})
         return cat_info.get("pillar", 1)
 
+    def _record_theme_use(self, theme_id: str):
+        """Record a theme as recently used to prevent duplicates."""
+        if theme_id and theme_id not in self._recent_theme_ids:
+            self._recent_theme_ids.append(theme_id)
+        # Trim to max history size
+        if len(self._recent_theme_ids) > self.RECENT_THEME_HISTORY:
+            self._recent_theme_ids = self._recent_theme_ids[-self.RECENT_THEME_HISTORY:]
+
     def select_theme(self, pillar: Optional[int] = None) -> dict:
         """
         Select a content theme based on strategy.
+        Avoids recently used themes when possible.
 
         Args:
             pillar: 1 for FLIPT CEO content, 2 for AI Expert content.
                     None for weighted random based on category ratios.
         """
         if pillar:
-            # Filter themes by pillar
+            # Filter themes by pillar, preferring unused ones
             pillar_themes = [
                 t for t in self.content_themes
                 if self._get_pillar(t) == pillar
             ]
-            if pillar_themes:
-                return random.choice(pillar_themes)
+            unused = [t for t in pillar_themes if t.get("id") not in self._recent_theme_ids]
+            pool = unused if unused else pillar_themes
+            if pool:
+                theme = random.choice(pool)
+                self._record_theme_use(theme.get("id"))
+                return theme
 
         # Weighted selection based on category ratios
-        return self._weighted_theme_select()
+        theme = self._weighted_theme_select()
+        self._record_theme_use(theme.get("id"))
+        return theme
 
     def _weighted_theme_select(self) -> dict:
-        """Select theme respecting category ratio weights."""
+        """Select theme respecting category ratio weights, preferring unused themes."""
         # Build weighted list: [(category, weight), ...]
         categories = []
         weights = []
@@ -122,9 +141,10 @@ class ContentAgent:
         # Pick category by weight
         chosen_cat = random.choices(categories, weights=weights, k=1)[0]
 
-        # Pick random theme from that category
+        # Pick random theme from that category, preferring unused ones
         cat_themes = [t for t in self.content_themes if t.get("category") == chosen_cat]
-        return random.choice(cat_themes)
+        unused = [t for t in cat_themes if t.get("id") not in self._recent_theme_ids]
+        return random.choice(unused if unused else cat_themes)
 
     async def generate_script(
         self,
@@ -427,7 +447,7 @@ Follow for more. I'm David. I escaped to flip the script."""
         respecting category ratios (35% warning, 25% ai_expert, 25% hope, 15% origin).
         """
         results = []
-        used_theme_ids = []
+        used_theme_ids = list(self._recent_theme_ids)  # Start with global history
 
         # Build target counts per category based on ratios
         category_targets = {}
@@ -443,23 +463,20 @@ Follow for more. I'm David. I escaped to flip the script."""
         category_queue = category_queue[:count]  # Trim to exact count
 
         for i, target_category in enumerate(category_queue):
-            # Pick a theme from this category not yet used
+            # Pick a theme from this category not yet used (checks both batch + global history)
             available = [
                 t for t in self.content_themes
                 if t.get("category") == target_category
                 and t.get("id") not in used_theme_ids
             ]
             if not available:
-                available = [
-                    t for t in self.content_themes
-                    if t.get("category") == target_category
-                ]
-
-            if not available:
+                # All themes in this category already used — skip instead of re-using
+                logger.warning(f"No unused themes in {target_category} — skipping to avoid duplicate content")
                 continue
 
             theme = random.choice(available)
             used_theme_ids.append(theme.get("id"))
+            self._record_theme_use(theme.get("id"))
 
             try:
                 result = await self.create_video_for_approval(

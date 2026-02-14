@@ -16,8 +16,9 @@ Everything goes through the approval queue. No auto-posting, no auto-replying.
 
 import json
 import logging
+import random
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,15 @@ class GrowthAgent:
                 reply_drafted INTEGER DEFAULT 0,
                 approval_id INTEGER,
                 seen_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_tweet_schedule (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                schedule_date TEXT NOT NULL,
+                planned_count INTEGER NOT NULL,
+                slot_times TEXT NOT NULL,
+                created_at TEXT NOT NULL
             )
         """)
         conn.commit()
@@ -888,6 +898,265 @@ class GrowthAgent:
         except Exception as e:
             logger.error(f"Momentum: Thread formatting failed: {e}")
             return []
+
+    # ------------------------------------------------------------------
+    # Feature 5: Daily Tweet Schedule Planner
+    # ------------------------------------------------------------------
+
+    def plan_daily_schedule(self, target_date: str = None) -> dict:
+        """Plan today's tweet schedule with natural human-like spacing.
+
+        Picks 4-8 tweets, spreads across 04:00-19:00 UTC (8am-11pm UAE),
+        with organic jitter so posting never looks robotic.
+
+        Returns dict with date, count, and list of ISO datetime strings.
+        """
+        today = target_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        # Check if we already have a plan for today
+        existing = self._get_daily_plan(today)
+        if existing:
+            logger.info(f"Momo: Plan already exists for {today} ({existing['planned_count']} tweets)")
+            return existing
+
+        # Pick random count 4-8
+        count = random.randint(4, 8)
+
+        # Get historically best hours (if enough data)
+        best_hours = self._get_best_performing_hours()
+
+        # Generate organic posting times
+        slot_times = self._generate_organic_times(today, count, best_hours)
+
+        # Store plan
+        conn = sqlite3.connect(str(GROWTH_DB))
+        conn.execute(
+            """INSERT INTO daily_tweet_schedule
+               (schedule_date, planned_count, slot_times, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (
+                today,
+                count,
+                json.dumps(slot_times),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        plan = {
+            "schedule_date": today,
+            "planned_count": count,
+            "slot_times": slot_times,
+        }
+        logger.info(f"Momo: Planned {count} tweets for {today}: {slot_times}")
+        return plan
+
+    def _generate_organic_times(
+        self, date_str: str, count: int, best_hours: list[int]
+    ) -> list[str]:
+        """Generate natural-looking posting times across the day.
+
+        Window: 04:00-19:00 UTC (8am-11pm UAE)
+        - Divides window into segments, places each tweet randomly within its segment
+        - Enforces min 2h / max 6h gap between consecutive posts
+        - Minute-level jitter (never :00 or :30)
+        - Nudges toward best-performing hours when data is available
+        """
+        window_start = 4   # 04:00 UTC
+        window_end = 19    # 19:00 UTC
+        window_hours = window_end - window_start  # 15 hours
+
+        # Divide window into equal segments
+        segment_size = window_hours / count
+
+        times = []
+        for i in range(count):
+            seg_start = window_start + i * segment_size
+            seg_end = window_start + (i + 1) * segment_size
+
+            # If we have performance data, nudge toward best hours
+            if best_hours:
+                # Find best hour within this segment
+                best_in_segment = [
+                    h for h in best_hours
+                    if seg_start <= h < seg_end
+                ]
+                if best_in_segment:
+                    # Nudge: 60% chance to land near a best hour
+                    if random.random() < 0.6:
+                        hour = random.choice(best_in_segment)
+                        # Add some variance around the best hour (+/- 30 min)
+                        minute = random.randint(1, 58)
+                        # Avoid :00 and :30
+                        while minute in (0, 30):
+                            minute = random.randint(1, 58)
+                        times.append((hour, minute))
+                        continue
+
+            # Pure random within segment
+            hour_float = random.uniform(seg_start, seg_end - 0.02)
+            hour = int(hour_float)
+            # Organic minute — never :00 or :30
+            minute = random.randint(1, 58)
+            while minute in (0, 30):
+                minute = random.randint(1, 58)
+            times.append((hour, minute))
+
+        # Enforce min 2h / max 6h gaps — iterate forward, adjusting each slot
+        # relative to the one before it. Three passes to stabilize cascading pushes.
+        for _pass in range(3):
+            for i in range(1, len(times)):
+                prev_minutes = times[i - 1][0] * 60 + times[i - 1][1]
+                curr_minutes = times[i][0] * 60 + times[i][1]
+                gap = curr_minutes - prev_minutes
+
+                if gap < 120:  # Less than 2 hours — push forward
+                    new_minutes = prev_minutes + 120 + random.randint(0, 15)
+                    new_hour = min(new_minutes // 60, window_end - 1)
+                    new_minute = new_minutes % 60
+                    if new_minute in (0, 30):
+                        new_minute = new_minute + random.randint(1, 5)
+                    times[i] = (new_hour, min(new_minute, 59))
+                elif gap > 360:  # More than 6 hours — pull earlier
+                    mid = prev_minutes + gap // 2
+                    new_hour = min(mid // 60, window_end - 1)
+                    new_minute = mid % 60
+                    if new_minute in (0, 30):
+                        new_minute = new_minute + random.randint(1, 5)
+                    times[i] = (new_hour, min(new_minute, 59))
+
+        # Final safety: drop any slot that still violates min 2h gap
+        # (can happen when too many tweets hit the window ceiling)
+        cleaned = [times[0]]
+        for i in range(1, len(times)):
+            prev_minutes = cleaned[-1][0] * 60 + cleaned[-1][1]
+            curr_minutes = times[i][0] * 60 + times[i][1]
+            if curr_minutes - prev_minutes >= 115:  # ~2h with small tolerance
+                cleaned.append(times[i])
+        times = cleaned
+
+        # Convert to ISO datetime strings
+        slot_strings = []
+        for hour, minute in times:
+            # Clamp to window
+            hour = max(window_start, min(hour, window_end - 1))
+            minute = max(0, min(minute, 59))
+            dt = datetime.fromisoformat(f"{date_str}T{hour:02d}:{minute:02d}:00+00:00")
+            slot_strings.append(dt.isoformat())
+
+        return slot_strings
+
+    def _get_best_performing_hours(self) -> list[int]:
+        """Query tweet_metrics for hours with best engagement.
+
+        Needs 20+ data points to return results. Otherwise returns empty
+        list (planner uses pure random spacing).
+        """
+        try:
+            conn = sqlite3.connect(str(GROWTH_DB))
+            conn.row_factory = sqlite3.Row
+
+            # Check if we have enough data
+            total = conn.execute("SELECT COUNT(*) as c FROM tweet_metrics").fetchone()["c"]
+            if total < 20:
+                conn.close()
+                return []
+
+            # Group by hour, rank by average engagement
+            rows = conn.execute("""
+                SELECT
+                    CAST(strftime('%H', created_at) AS INTEGER) as hour,
+                    AVG(likes + retweets + replies) as avg_engagement,
+                    COUNT(*) as sample_size
+                FROM tweet_metrics
+                WHERE created_at IS NOT NULL AND created_at != ''
+                GROUP BY hour
+                HAVING sample_size >= 3
+                ORDER BY avg_engagement DESC
+                LIMIT 6
+            """).fetchall()
+            conn.close()
+
+            best = [row["hour"] for row in rows]
+            if best:
+                logger.info(f"Momo: Best performing hours (UTC): {best}")
+            return best
+
+        except Exception as e:
+            logger.error(f"Momo: Failed to query best hours: {e}")
+            return []
+
+    def _get_daily_plan(self, date_str: str) -> dict | None:
+        """Read today's plan from DB."""
+        try:
+            conn = sqlite3.connect(str(GROWTH_DB))
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM daily_tweet_schedule WHERE schedule_date = ? ORDER BY id DESC LIMIT 1",
+                (date_str,),
+            ).fetchone()
+            conn.close()
+
+            if not row:
+                return None
+
+            return {
+                "schedule_date": row["schedule_date"],
+                "planned_count": row["planned_count"],
+                "slot_times": json.loads(row["slot_times"]),
+            }
+        except Exception as e:
+            logger.error(f"Momo: Failed to read daily plan: {e}")
+            return None
+
+    def get_todays_plan(self) -> dict | None:
+        """Get today's tweet schedule plan."""
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return self._get_daily_plan(today)
+
+    def get_next_planned_slot(self) -> datetime | None:
+        """Get the next available planned slot for scheduling an approved tweet.
+
+        Dashboard calls this to assign approved tweets to the next open slot.
+        Returns None if no slots are available (all passed or all taken).
+        """
+        plan = self.get_todays_plan()
+        if not plan:
+            return None
+
+        now = datetime.now(timezone.utc)
+
+        # Read already-scheduled times from scheduler.db to find taken slots
+        taken_times = []
+        scheduler_db = DATA_DIR / "scheduler.db"
+        try:
+            if scheduler_db.exists():
+                conn = sqlite3.connect(str(scheduler_db))
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT scheduled_time FROM scheduled_content WHERE status = 'pending'"
+                ).fetchall()
+                conn.close()
+                taken_times = [datetime.fromisoformat(r["scheduled_time"]) for r in rows]
+        except Exception:
+            pass
+
+        # Find the first planned slot that's still in the future and not taken
+        for slot_str in plan["slot_times"]:
+            slot = datetime.fromisoformat(slot_str)
+            # Must be at least 5 minutes from now
+            if slot <= now + timedelta(minutes=5):
+                continue
+            # Check if slot is taken (90-minute conflict window)
+            conflict = any(
+                abs((t - slot).total_seconds()) < 5400  # 90 min
+                for t in taken_times
+            )
+            if not conflict:
+                return slot
+
+        return None
 
     # ------------------------------------------------------------------
     # Status
