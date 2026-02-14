@@ -127,6 +127,8 @@ class OperationsAgent:
                     f"Failed to process {action_file.name}",
                     details=str(e), success=False,
                 )
+                # Delete the file so it doesn't get re-processed on next poll
+                action_file.unlink(missing_ok=True)
 
     # ------------------------------------------------------------------
     # Action handlers
