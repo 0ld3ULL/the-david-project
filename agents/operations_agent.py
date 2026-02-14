@@ -14,8 +14,10 @@ calls poll_dashboard_actions() every 30 seconds. Oprah is the handler,
 not the scheduler.
 """
 
+import asyncio
 import json
 import logging
+import random
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -571,7 +573,15 @@ class OperationsAgent:
             return {"error": str(e)}
 
     async def _execute_scheduled_tweet(self, content_data: dict) -> dict:
-        """Execute a scheduled tweet (called by ContentScheduler at the scheduled time)."""
+        """Execute a scheduled tweet (called by ContentScheduler at the scheduled time).
+
+        Adds a 30-120 second random delay before posting so the actual firing
+        time looks natural even if two tweets are close together.
+        """
+        delay = random.randint(30, 120)
+        logger.info(f"Tweet delay: waiting {delay}s before posting (natural jitter)")
+        await asyncio.sleep(delay)
+
         action_type = content_data.get("action", "tweet")
         content_data["action"] = action_type
 

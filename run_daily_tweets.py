@@ -44,6 +44,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 RESEARCH_DB = Path("data/research.db")
+APPROVAL_DB = Path("data/approval_queue.db")
 
 
 def pick_category(categories: dict) -> tuple[str, dict]:
@@ -141,6 +142,60 @@ def get_research_findings(max_items: int = 5) -> list[dict]:
 
     except Exception as e:
         logger.warning(f"Could not read research.db: {e}")
+        return []
+
+
+def get_last_tweet_theme() -> list[str]:
+    """Get keywords from the last approved tweet's context to avoid repetition.
+
+    Returns a list of lowercase keywords from the most recent tweet's
+    context_summary field, so the next tweet can pick a different topic.
+    """
+    if not APPROVAL_DB.exists():
+        return []
+
+    try:
+        conn = sqlite3.connect(str(APPROVAL_DB))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("""
+            SELECT context_summary, action_data FROM approvals
+            WHERE action_type = 'tweet' AND status IN ('pending', 'approved')
+            ORDER BY created_at DESC LIMIT 1
+        """).fetchone()
+        conn.close()
+
+        if not row:
+            return []
+
+        # Extract keywords from context_summary and tweet text
+        context = (row["context_summary"] or "").lower()
+        try:
+            action_data = json.loads(row["action_data"])
+            text = action_data.get("text", "").lower()
+        except (json.JSONDecodeError, TypeError):
+            text = ""
+
+        # Combine and extract meaningful words (4+ chars)
+        combined = f"{context} {text}"
+        # Remove common stopwords
+        stopwords = {
+            "about", "david", "tweet", "theme", "write", "that", "this",
+            "with", "from", "have", "been", "were", "they", "their",
+            "what", "when", "where", "which", "your", "just", "like",
+            "more", "than", "them", "only", "into", "over", "some",
+            "very", "also", "most", "back", "will", "here", "even",
+        }
+        words = [
+            w.strip(".,!?\"'()-:;")
+            for w in combined.split()
+            if len(w.strip(".,!?\"'()-:;")) >= 4
+        ]
+        keywords = [w for w in words if w not in stopwords]
+
+        return keywords[:15]  # Cap at 15 keywords
+
+    except Exception as e:
+        logger.warning(f"Could not read last tweet theme: {e}")
         return []
 
 
@@ -303,9 +358,24 @@ async def generate_theme_tweets(
     categories = personality.get_content_categories()
     themes = personality.get_video_themes()
 
+    # Get last tweet's keywords to avoid repeating the same topic
+    last_keywords = get_last_tweet_theme()
+
     # Build a diverse queue: alternate between observations and themes
-    tweet_prompts = []
-    observation_pool = random.sample(DAVID_OBSERVATIONS, min(count, len(DAVID_OBSERVATIONS)))
+    # Filter out observations that overlap with the last tweet
+    available_observations = list(DAVID_OBSERVATIONS)
+    if last_keywords:
+        def _overlaps(observation: str, keywords: list[str]) -> bool:
+            obs_lower = observation.lower()
+            matches = sum(1 for kw in keywords if kw in obs_lower)
+            return matches >= 2  # Overlap if 2+ keywords match
+
+        filtered = [o for o in available_observations if not _overlaps(o, last_keywords)]
+        if filtered:  # Only use filtered list if it's not empty
+            available_observations = filtered
+            logger.info(f"Filtered {len(DAVID_OBSERVATIONS) - len(filtered)} observations overlapping with last tweet")
+
+    observation_pool = random.sample(available_observations, min(count, len(available_observations)))
 
     for i in range(count):
         if i % 2 == 0 and observation_pool:

@@ -1133,48 +1133,76 @@ def _get_next_optimal_slot(platforms: list[str]) -> datetime:
 
 def _get_next_available_tweet_slot() -> datetime:
     """
-    Find the next available tweet slot at optimal hours (13, 16, 19, 22 UTC).
+    Find the next available tweet slot from Momo's daily plan.
 
-    Reads scheduler.db to avoid conflicts with already-scheduled posts.
-    Adds 0-15 min jitter so tweets don't land exactly on the hour.
+    Reads today's plan from growth.db (daily_tweet_schedule table).
+    Assigns approved tweet to next available planned slot (90min conflict window).
+    Fallback: organic time 2-4h from now with natural-looking minute.
     """
     now = datetime.utcnow()
-    min_post_time = now + timedelta(minutes=30)
-    optimal_hours = PLATFORM_OPTIMAL_HOURS.get("twitter", [13, 16, 19, 22])
+    GROWTH_DB = DATA_DIR / "growth.db"
 
-    # Read already-scheduled times from scheduler.db
-    taken_times = []
+    # --- Try Momo's plan first ---
     try:
-        if SCHEDULER_DB.exists():
-            conn = sqlite3.connect(str(SCHEDULER_DB))
+        if GROWTH_DB.exists():
+            conn = sqlite3.connect(str(GROWTH_DB))
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT scheduled_time FROM scheduled_content WHERE status = 'pending'"
-            ).fetchall()
+            today = now.strftime("%Y-%m-%d")
+            row = conn.execute(
+                "SELECT slot_times FROM daily_tweet_schedule WHERE schedule_date = ? ORDER BY id DESC LIMIT 1",
+                (today,),
+            ).fetchone()
             conn.close()
-            taken_times = [datetime.fromisoformat(r["scheduled_time"]) for r in rows]
-    except Exception:
-        pass  # DB might not exist yet — no conflicts
 
-    # Find next available slot (check today + next 2 days)
-    for day_offset in range(3):
-        for hour in optimal_hours:
-            slot = (now + timedelta(days=day_offset)).replace(
-                hour=hour, minute=0, second=0, microsecond=0
-            )
-            if slot <= min_post_time:
-                continue
-            # Check conflict: no other post within 1 hour of this slot
-            conflict = any(
-                abs((t - slot).total_seconds()) < 3600 for t in taken_times
-            )
-            if not conflict:
-                # Add jitter: 0-15 minutes so posts look natural
-                jitter = random.randint(0, 15)
-                return slot + timedelta(minutes=jitter)
+            if row:
+                import json as _json
+                slot_times = _json.loads(row["slot_times"])
 
-    # Fallback: 2 hours from now
-    return now + timedelta(hours=2)
+                # Read already-scheduled times from scheduler.db
+                taken_times = []
+                try:
+                    if SCHEDULER_DB.exists():
+                        sconn = sqlite3.connect(str(SCHEDULER_DB))
+                        sconn.row_factory = sqlite3.Row
+                        rows = sconn.execute(
+                            "SELECT scheduled_time FROM scheduled_content WHERE status = 'pending'"
+                        ).fetchall()
+                        sconn.close()
+                        taken_times = [datetime.fromisoformat(r["scheduled_time"]) for r in rows]
+                except Exception:
+                    pass
+
+                # Find next available planned slot
+                for slot_str in slot_times:
+                    slot = datetime.fromisoformat(slot_str)
+                    # Strip timezone info for comparison with naive utcnow
+                    if slot.tzinfo is not None:
+                        slot = slot.replace(tzinfo=None)
+                    # Must be at least 5 minutes from now
+                    if slot <= now + timedelta(minutes=5):
+                        continue
+                    # Check conflict: no other post within 90 minutes of this slot
+                    def _strip_tz(dt):
+                        return dt.replace(tzinfo=None) if dt.tzinfo else dt
+                    conflict = any(
+                        abs((_strip_tz(t) - slot).total_seconds()) < 5400
+                        for t in taken_times
+                    )
+                    if not conflict:
+                        return slot
+
+    except Exception as e:
+        print(f"Error reading Momo's plan: {e}")
+
+    # --- Fallback: organic time 2-4h from now ---
+    hours_ahead = random.uniform(2.0, 4.0)
+    fallback = now + timedelta(hours=hours_ahead)
+    # Natural-looking minute (never :00 or :30)
+    minute = random.randint(1, 58)
+    while minute in (0, 30):
+        minute = random.randint(1, 58)
+    fallback = fallback.replace(minute=minute, second=0, microsecond=0)
+    return fallback
 
 
 # ============== TEMPLATE CONTEXT ==============
