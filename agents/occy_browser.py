@@ -54,7 +54,15 @@ MARKETPLACE_DOMAINS = [
 LLM_PROVIDERS = {
     "gemini": "Gemini 2.5 Flash — fast (~1-3s/action), cheap, great vision",
     "sonnet": "Claude Sonnet — slower (~8-12s/action), most reliable",
+    "opus": "Claude Opus — slowest (~15-25s/action), most capable",
     "ollama": "Local Ollama — free, needs GPU, ~2-4s/action",
+}
+# Escalation chain: gemini/ollama → sonnet → opus → (no further)
+ESCALATION_TARGET = {
+    "gemini": "sonnet",
+    "ollama": "sonnet",
+    "sonnet": "opus",
+    "opus": None,  # Top tier — nowhere to escalate
 }
 DEFAULT_LLM_PROVIDER = "gemini"
 
@@ -116,6 +124,13 @@ class FocalBrowser:
             from browser_use.llm import ChatOllama
             self._llm = ChatOllama(model=self._ollama_model)
 
+        elif self._llm_provider == "opus":
+            from browser_use.llm import ChatAnthropic
+            self._llm = ChatAnthropic(
+                model="claude-opus-4-6",
+                api_key=os.environ.get("ANTHROPIC_API_KEY"),
+            )
+
         else:  # sonnet (default fallback)
             from browser_use.llm import ChatAnthropic
             self._llm = ChatAnthropic(
@@ -127,17 +142,26 @@ class FocalBrowser:
         return self._llm
 
     def _get_smart_llm(self):
-        """Get or create the escalation LLM — used when the fast model gets stuck."""
+        """Get or create the escalation LLM — next tier up from primary."""
         if self._smart_llm is not None:
             return self._smart_llm
 
-        # Escalate to Sonnet — proven reliable for complex UI navigation
+        target = ESCALATION_TARGET.get(self._llm_provider)
+        if not target:
+            return None  # Already at top tier
+
         from browser_use.llm import ChatAnthropic
-        self._smart_llm = ChatAnthropic(
-            model="claude-sonnet-4-20250514",
-            api_key=os.environ.get("ANTHROPIC_API_KEY"),
-        )
-        logger.info(f"Escalation LLM initialized: sonnet ({self._smart_llm.name})")
+        if target == "opus":
+            self._smart_llm = ChatAnthropic(
+                model="claude-opus-4-6",
+                api_key=os.environ.get("ANTHROPIC_API_KEY"),
+            )
+        else:  # sonnet
+            self._smart_llm = ChatAnthropic(
+                model="claude-sonnet-4-20250514",
+                api_key=os.environ.get("ANTHROPIC_API_KEY"),
+            )
+        logger.info(f"Escalation LLM initialized: {target} ({self._smart_llm.name})")
         return self._smart_llm
 
     async def start(self) -> bool:
@@ -254,6 +278,24 @@ class FocalBrowser:
                 self._temp_profile = None
             logger.info("Browser stopped")
 
+    async def dismiss_intercom(self):
+        """Inject JS to hide the Intercom chat widget that blocks UI interaction."""
+        try:
+            page = await self.browser.get_current_page()
+            await page.evaluate("""
+                () => {
+                    // Hide the Intercom container entirely
+                    const container = document.getElementById('intercom-container');
+                    if (container) container.style.display = 'none';
+                    // Also hide the launcher button and frame
+                    document.querySelectorAll(
+                        '[class*="intercom"], iframe[name*="intercom"]'
+                    ).forEach(el => el.style.display = 'none');
+                }
+            """)
+        except Exception:
+            pass  # Page may not have Intercom loaded yet
+
     @property
     def is_connected(self) -> bool:
         """Check if browser is running and connected."""
@@ -313,19 +355,22 @@ class FocalBrowser:
         """
         Check if we have a valid Focal ML login session.
 
-        Uses a browser-use Agent task to navigate and check login state,
-        since the CDP page object doesn't support Playwright-style methods.
+        Uses _run_agent directly (no escalation) because browser-use's
+        simple judge often overrides the success flag on simple text
+        responses, which would trigger unnecessary escalation.
         """
         if not self._running or not self.browser:
             return False
 
         try:
-            result = await self.run_task(
+            llm = self._get_llm()
+            result = await self._run_agent(
                 "Navigate to https://focalml.com and check if you are logged in. "
                 "Look for indicators like: a dashboard, projects list, credit balance, "
                 "or a user profile icon. If you see a login/signup page instead, "
                 "report 'NOT LOGGED IN'. If you see a dashboard or project interface, "
                 "report 'LOGGED IN'. Return ONLY one of those two phrases.",
+                llm,
                 max_steps=5,
             )
 
@@ -473,6 +518,9 @@ class FocalBrowser:
             }
 
         try:
+            # Dismiss Intercom chat widget before each task — it blocks UI
+            await self.dismiss_intercom()
+
             # First attempt: fast model
             llm = self._get_llm()
             result = await self._run_agent(task, llm, max_steps)
@@ -481,14 +529,14 @@ class FocalBrowser:
             if result["success"] or result.get("disconnected"):
                 return result
 
-            # Fast model failed — escalate to smart model
-            # Skip escalation if already using sonnet (no point retrying same model)
-            if self._llm_provider == "sonnet":
-                return result
+            # Primary failed — escalate to next tier
+            target = ESCALATION_TARGET.get(self._llm_provider)
+            if not target:
+                return result  # Already at top tier, nowhere to escalate
 
             logger.warning(
-                f"Fast model failed ({self._llm_provider}) after {result['steps_taken']} steps — "
-                f"escalating to Sonnet"
+                f"Primary model failed ({self._llm_provider}) after {result['steps_taken']} steps — "
+                f"escalating to {target}"
             )
             smart_llm = self._get_smart_llm()
             smart_result = await self._run_agent(task, smart_llm, max_steps)
@@ -697,18 +745,17 @@ class FocalBrowser:
         for attempt in range(retries):
             prompt = (
                 "You are on focalml.com. Find the credit balance number. "
-                "It is displayed in the TOP-RIGHT area of the header bar, "
-                "shown as a number (like '15247') next to a small icon, "
-                "to the left of the word 'Support'. "
-                "Look at the HEADER BAR at the top of the page, NOT the sidebar. "
+                "It is displayed in the LEFT SIDEBAR, shown as a number "
+                "(like '15247') next to the word 'Credits'. "
+                "Look in the SIDEBAR on the left side of the page. "
             )
             if attempt > 0:
                 # On retry, navigate home first for a clean page state
                 prompt = (
                     "Navigate to https://focalml.com first, then look at the "
-                    "TOP-RIGHT of the page header. The credit balance is a "
-                    "number (like '15247') shown next to a small icon, to the "
-                    "left of the word 'Support'. Read that number carefully. "
+                    "LEFT SIDEBAR for the credit balance. It is a number "
+                    "(like '15247') shown next to the word 'Credits'. "
+                    "Read that number carefully. "
                 )
             prompt += "Return ONLY the number."
 

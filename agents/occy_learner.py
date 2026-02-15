@@ -84,7 +84,11 @@ class OccyLearner:
         if FEATURE_MAP_PATH.exists():
             try:
                 with open(FEATURE_MAP_PATH) as f:
-                    return json.load(f)
+                    saved = json.load(f)
+                # Backfill any fields from curriculum that are missing in saved state
+                # (e.g. 'generative' flag added after initial save)
+                self._backfill_from_curriculum(saved)
+                return saved
             except (json.JSONDecodeError, Exception) as e:
                 logger.warning(f"Corrupted feature map, reinitializing: {e}")
 
@@ -129,6 +133,46 @@ class OccyLearner:
         with open(FEATURE_MAP_PATH, "w") as f:
             json.dump(feature_map, f, indent=2)
 
+    def _backfill_from_curriculum(self, saved: dict):
+        """
+        Backfill fields from curriculum YAML into saved feature map.
+
+        When new fields are added to the curriculum (e.g. 'generative'),
+        older saved feature maps won't have them. This syncs those fields
+        without overwriting progress data (confidence, explored_count, etc.).
+        """
+        if not CURRICULUM_PATH.exists():
+            return
+
+        try:
+            with open(CURRICULUM_PATH) as f:
+                curriculum = yaml.safe_load(f)
+        except Exception:
+            return
+
+        # Build a lookup: (category, feature_name) -> curriculum feature dict
+        curriculum_lookup = {}
+        for cat_name, cat_data in curriculum.get("categories", {}).items():
+            for feat in cat_data.get("features", []):
+                curriculum_lookup[(cat_name, feat["name"])] = feat
+
+        # Backfill missing fields
+        BACKFILL_FIELDS = ["generative", "test_prompt"]
+        changed = False
+        for cat_name, cat_data in saved.get("categories", {}).items():
+            for feat in cat_data.get("features", []):
+                key = (cat_name, feat["name"])
+                if key in curriculum_lookup:
+                    cur = curriculum_lookup[key]
+                    for field in BACKFILL_FIELDS:
+                        if field not in feat and field in cur:
+                            feat[field] = cur[field]
+                            changed = True
+
+        if changed:
+            logger.info("Backfilled missing fields from curriculum into feature map")
+            self._save_feature_map(saved)
+
     def _select_next_feature(
         self,
         job_relevant: list[str] = None,
@@ -166,8 +210,13 @@ class OccyLearner:
                 for feat in cat_data.get("features", []):
                     if feat["name"] in exclude:
                         continue
-                    # Must be generative (costs credits) or in a generative category
-                    is_generative = feat.get("generative", False) or cat_name in GENERATIVE_CATEGORIES
+                    # Must be generative (costs credits) or in a generative category.
+                    # Respect explicit per-feature flag — if feature says generative: false,
+                    # skip it even if the category is generative.
+                    if "generative" in feat:
+                        is_generative = feat["generative"]
+                    else:
+                        is_generative = cat_name in GENERATIVE_CATEGORIES
                     if not is_generative:
                         continue
                     # Target range: explored but not yet hands-on tested
@@ -184,7 +233,10 @@ class OccyLearner:
                 for feat in cat_data.get("features", []):
                     if feat["name"] in exclude:
                         continue
-                    is_generative = feat.get("generative", False) or cat_name in GENERATIVE_CATEGORIES
+                    if "generative" in feat:
+                        is_generative = feat["generative"]
+                    else:
+                        is_generative = cat_name in GENERATIVE_CATEGORIES
                     if is_generative and feat["confidence"] < 0.7:
                         fallback.append((cat_name, feat))
 
@@ -678,11 +730,11 @@ class OccyLearner:
         elif category == "voice_tts":
             gen_prompt += (
                 f"{cost_warning}"
-                f"Generate a short voice clip using this model. "
+                f"Generate a short voice/narration clip. "
                 f"Steps:\n"
                 f"1. Make sure you're in a project\n"
-                f"2. Select '{feature_name}' as the voice model\n"
-                f"3. Use this text: \"{test_prompt}\"\n"
+                f"2. {feature['description']}. Find and configure this in the UI.\n"
+                f"3. Use this text for the narration: \"{test_prompt}\"\n"
                 f"4. Click Generate/Preview and WAIT for the result\n"
                 f"5. Note the voice quality."
             )

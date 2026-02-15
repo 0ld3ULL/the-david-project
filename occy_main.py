@@ -13,14 +13,17 @@ Usage:
     python occy_main.py --hands-on 60 --budget 200  # Hands-on with 200 credit budget
     python occy_main.py --auto             # Auto-progress: explore → hands-on → production
     python occy_main.py --llm gemini       # Use Gemini Flash (~1-3s/action, default)
-    python occy_main.py --llm sonnet       # Use Claude Sonnet (~8-12s/action)
+    python occy_main.py --llm sonnet       # Use Claude Sonnet (~8-12s/action, escalates to Opus)
+    python occy_main.py --llm opus         # Use Claude Opus (~15-25s/action, most capable)
     python occy_main.py --llm ollama       # Use local Ollama (~2-4s/action, free)
     python occy_main.py --status           # Print current status and exit
+
+Escalation chain: gemini/ollama → sonnet → opus (automatic on failure)
 
 Environment:
     Requires .env file with:
     - GOOGLE_API_KEY (for Gemini browser agent + video review)
-    - ANTHROPIC_API_KEY (only if using --llm sonnet)
+    - ANTHROPIC_API_KEY (only if using --llm sonnet or opus)
 """
 
 import argparse
@@ -328,9 +331,9 @@ def parse_args():
         help="Custom prompt for --test-clip (default: 'A person walking through a park')"
     )
     parser.add_argument(
-        "--llm", choices=["gemini", "sonnet", "ollama"],
+        "--llm", choices=["gemini", "sonnet", "opus", "ollama"],
         default="gemini",
-        help="LLM provider for browser automation: gemini (fast, default), sonnet (reliable), ollama (local/free)"
+        help="LLM provider: gemini (fast, default), sonnet (reliable), opus (most capable), ollama (local/free)"
     )
     return parser.parse_args()
 
