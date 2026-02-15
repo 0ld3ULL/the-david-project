@@ -115,8 +115,8 @@ python voice/wall_python.py -s agents "How does Oprah work?"
 **This is automated. A hook fires on every user message checking context %.**
 
 - **Status line** shows real-time context usage at the bottom of the screen
-- **At 55%:** The `UserPromptSubmit` hook injects a CONTEXT PROTOCOL TRIGGERED warning
-- **At 70%:** The hook injects a CONTEXT EMERGENCY warning
+- **At 65%:** The `UserPromptSubmit` hook injects a CONTEXT PROTOCOL TRIGGERED warning
+- **At 80%:** The hook injects a CONTEXT EMERGENCY warning
 
 **When you receive a CONTEXT PROTOCOL TRIGGERED message, you MUST:**
 
@@ -135,7 +135,7 @@ python voice/wall_python.py -s agents "How does Oprah work?"
 
 **On session startup**, ALSO read `session_log.md` — it contains detailed state from the last session that the brief may not capture.
 
-**Why 55%?** Quality degrades after 70%. We stop at 55% to leave 15% headroom for the save process itself (~5% needed, 10% safety margin). This is the Bitcoin strategy — trustless, no human intervention needed.
+**Why 65%?** Opus 4.6 handles long context much better than 4.5 (76% vs 18.5% retrieval accuracy). We stop at 65% to leave 15% headroom for the save process itself (~5% needed, 10% safety margin). This is the Bitcoin strategy — trustless, no human intervention needed.
 
 ## Session End Checklist
 

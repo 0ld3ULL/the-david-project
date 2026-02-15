@@ -190,6 +190,9 @@ class ScreenMonitor:
                     "would you like", "do you want", "shall i",
                     "please confirm", "is this correct", "approve",
                     "choose", "select", "pick",
+                    "answer to continue", "what kind of video",
+                    "1/4", "2/4", "3/4", "4/4",
+                    "1/3", "2/3", "3/3",
                 ]):
                     return {"changed": True, "reason": "question detected in page text"}
 
@@ -253,15 +256,19 @@ class ScreenMonitor:
                 f"{context_line}\n\n"
                 f"Look at this screenshot and tell me:\n"
                 f"1. Is anything asking me a question or waiting for my input? "
-                f"(dialog box, chat message, confirmation prompt, form field)\n"
+                f"(dialog box, chat message, confirmation prompt, form field, "
+                f"radio button options, checkbox, multi-step questionnaire — "
+                f"look for step indicators like 1/4, 2/4, dropdown selector)\n"
                 f"2. Is there an error or problem I need to handle?\n"
                 f"3. Is a process complete that I should react to?\n\n"
                 f"Respond in this JSON format ONLY:\n"
                 f'{{"needs_interaction": true/false, '
                 f'"type": "question|error|complete|waiting|none", '
+                f'"ui_element_type": "radio_buttons|checkbox|text_input|button|dropdown|multi_step_form|none", '
                 f'"description": "brief description of what needs attention", '
-                f'"suggested_response": "what I should type or click"}}\n\n'
-                f"If nothing needs attention, set needs_interaction to false.",
+                f'"suggested_response": "what I should type or click — for radio buttons/dropdowns, name the option to select"}}\n\n'
+                f"If nothing needs attention, set needs_interaction to false.\n"
+                f"For radio buttons or multi-step forms, ALWAYS suggest the shortest/cheapest/simplest option.",
                 img,
             ])
 
@@ -294,12 +301,21 @@ class ScreenMonitor:
         if any(q in text_lower for q in [
             "would you like", "do you want", "shall i",
             "please confirm", "is this correct",
+            "answer to continue", "what kind of video",
+            "1/4", "2/4", "3/4", "4/4",
+            "1/3", "2/3", "3/3",
         ]):
+            # Detect multi-step forms vs simple questions
+            is_multi_step = any(s in text_lower for s in [
+                "answer to continue", "1/4", "2/4", "3/4", "4/4",
+                "1/3", "2/3", "3/3",
+            ])
             return {
                 "needs_interaction": True,
                 "type": "question",
-                "description": "The page appears to be asking a question",
-                "suggested_response": "Yes, go ahead",
+                "ui_element_type": "multi_step_form" if is_multi_step else "text_input",
+                "description": "Multi-step questionnaire requiring radio/checkbox selection" if is_multi_step else "The page appears to be asking a question",
+                "suggested_response": "Select the first/shortest/cheapest option" if is_multi_step else "Yes, go ahead",
             }
 
         if any(e in text_lower for e in [
@@ -332,7 +348,12 @@ class ScreenMonitor:
         """
         Default handler: automatically respond to common interactions.
 
-        For questions/confirmations: approve with browser-use task.
+        Handles ALL common UI patterns:
+        - Radio buttons, checkboxes, dropdowns
+        - Multi-step forms (1/4, 2/4, etc.)
+        - Text inputs, confirmation buttons
+        - Simple Yes/No dialogs
+
         For errors: take screenshot and log.
         For completions: notify and stop monitoring.
         """
@@ -345,18 +366,54 @@ class ScreenMonitor:
         )
 
         if event_type == "question":
-            # Respond affirmatively via browser-use
-            response_text = suggested or "Yes, go ahead"
+            # Comprehensive browser task prompt that handles all UI patterns
             await self.browser.run_task(
-                f"The website is asking a question or waiting for confirmation. "
-                f"The question is: '{description}'. "
-                f"Respond by typing '{response_text}' in the chat/input area "
-                f"and pressing Enter, OR click the appropriate confirmation "
-                f"button (Yes, Confirm, OK, Approve, Continue, Generate). "
-                f"If there are multiple options, pick the one that means 'yes' "
-                f"or 'proceed'.",
-                max_steps=10,
+                f"The website needs my input. Here's what I see: '{description}'.\n"
+                f"Gemini suggests: '{suggested}'\n\n"
+                f"HANDLE WHATEVER UI ELEMENT IS SHOWING:\n"
+                f"- If there are RADIO BUTTONS: click the first/cheapest/shortest option, then click Next/Continue/Submit\n"
+                f"- If there is a CHECKBOX: check it, then click Next/Continue/Submit\n"
+                f"- If there is a text input: type the suggested response and press Enter\n"
+                f"- If there is a button (Yes/Confirm/OK/Continue/Generate): click it\n"
+                f"- If there is a dropdown: select the first/default option\n"
+                f"- If this is a MULTI-STEP form (e.g. '1/4', '2/4'): answer this step then look for the next\n\n"
+                f"ALWAYS prefer: shortest duration, cheapest option, simplest settings.\n"
+                f"After responding, WAIT briefly to see if another question appears.",
+                max_steps=15,
             )
+
+            # Multi-step form loop: check if another step appeared
+            for step in range(10):
+                await asyncio.sleep(3)  # Wait for next step to load
+
+                try:
+                    text = await self.browser.get_page_text()
+                    text_lower = text.lower()
+                except Exception as e:
+                    logger.debug(f"Could not get page text for follow-up check: {e}")
+                    break
+
+                # Check if there's another question/form step
+                if any(indicator in text_lower for indicator in [
+                    "answer to continue", "/4", "/3", "/2",
+                    "what kind", "choose", "select", "pick",
+                    "would you like", "do you want",
+                ]):
+                    logger.info(f"Multi-step form: follow-up step {step + 1} detected")
+                    await self.browser.run_task(
+                        f"Another question or form step has appeared.\n\n"
+                        f"HANDLE WHATEVER UI ELEMENT IS SHOWING:\n"
+                        f"- If there are RADIO BUTTONS: click the first/cheapest/shortest option, then click Next/Continue/Submit\n"
+                        f"- If there is a CHECKBOX: check it, then click Next/Continue/Submit\n"
+                        f"- If there is a text input: type a short simple answer and press Enter\n"
+                        f"- If there is a button (Yes/Confirm/OK/Continue/Generate): click it\n"
+                        f"- If there is a dropdown: select the first/default option\n\n"
+                        f"ALWAYS prefer: shortest duration, cheapest option, simplest settings.",
+                        max_steps=15,
+                    )
+                else:
+                    logger.info(f"No more follow-up steps detected after step {step + 1}")
+                    break
 
         elif event_type == "error":
             # Log the error and take a screenshot
