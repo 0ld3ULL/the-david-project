@@ -2,7 +2,9 @@
 
 ## Session Startup
 
-**FIRST THING EVERY SESSION:** Read `claude_brief.md` — it contains your persistent memory (decaying memories with significance scores). This is your context from previous sessions.
+**FIRST THING EVERY SESSION:**
+1. Read `claude_brief.md` — persistent memory with significance scores
+2. Read `session_log.md` — detailed state from the last session (what was being worked on, next steps, uncommitted changes)
 
 If `claude_brief.md` seems stale or empty, run:
 ```
@@ -82,6 +84,32 @@ python voice/wall_python.py -s agents "How does Oprah work?"
 - Bug hunting that spans multiple files
 
 **Requires:** `GOOGLE_API_KEY` in `.env` (Google AI Studio)
+
+## Context Savepoint Protocol (MANDATORY — TRUSTLESS)
+
+**This is automated. A hook fires on every user message checking context %.**
+
+- **Status line** shows real-time context usage at the bottom of the screen
+- **At 55%:** The `UserPromptSubmit` hook injects a CONTEXT PROTOCOL TRIGGERED warning
+- **At 70%:** The hook injects a CONTEXT EMERGENCY warning
+
+**When you receive a CONTEXT PROTOCOL TRIGGERED message, you MUST:**
+
+1. **STOP all new work immediately** — do not start anything new
+2. **Update `session_log.md`** with:
+   - What you were working on (detailed, not summary)
+   - What code was changed and why
+   - What's left to do (specific next steps)
+   - Any errors or blockers encountered
+   - Any decisions made during the session
+3. **Save important memories:** `python -m claude_memory add`
+4. **Regenerate brief:** `python -m claude_memory brief`
+5. **Commit and push to git** (if there are changes worth committing)
+6. **Tell the user:** "Context at X%. Everything is saved. Please restart Claude Code."
+
+**On session startup**, ALSO read `session_log.md` — it contains detailed state from the last session that the brief may not capture.
+
+**Why 55%?** Quality degrades after 70%. We stop at 55% to leave 15% headroom for the save process itself (~5% needed, 10% safety margin). This is the Bitcoin strategy — trustless, no human intervention needed.
 
 ## Session End Checklist
 

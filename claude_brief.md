@@ -1,6 +1,6 @@
 # Claude Session Brief
-*Generated: 2026-02-14 23:29*
-*Memories: 76 total — 76 clear, 0 fuzzy, 0 fading*
+*Generated: 2026-02-15 09:55*
+*Memories: 78 total — 78 clear, 0 fuzzy, 0 fading*
 *Last decay: 2026-02-10T04:36:52.029534*
 *Last reconciliation: never*
 
@@ -111,6 +111,9 @@ Params: url, text=true for plain text
 CRITICAL: The identity calibration system (commit 7f8602f) is implemented in code but knowledge.db on VPS is EMPTY - zero identity rules stored. When Jono rejects tweets, rules should be distilled and stored permanently via KnowledgeStore. Either feedback handler not running, files not picked up, or rules never stored. This is the core learning loop for David personality. Jono considers this MAJOR. Must verify feedback pipeline works end-to-end on VPS every session.
 *Tags: identity, vps, bug, critical*
 
+### Context Savepoint Protocol — trustless context management *****
+Built trustless context management system. Statusline shows real-time context pct and writes to ~/.claude/context_pct.txt. UserPromptSubmit hook (context_check.sh) reads file on every message — at 55pct triggers CONTEXT PROTOCOL (stop work, save session_log.md, update memories, push git, tell user to restart). At 70pct triggers CONTEXT EMERGENCY. CLAUDE.md updated with full protocol. Session startup now reads session_log.md AND claude_brief.md. Key findings: quality degrades after 70pct, auto-compact triggers at 95pct (too late). Files: ~/.claude/statusline.sh, ~/.claude/context_check.sh, ~/.claude/settings.json.
+
 ### Multi-Model Routing *****
 Ollama (local) 15% — heartbeats, formatting, $0
 Haiku 75% — research, classification, ~$0.80/M
@@ -176,6 +179,9 @@ Bug1: /video text was literal script (4sec videos). Fixed: passes as custom_topi
 
 ### Occy exploration session 33/33 features *****
 Occy ran 8-hour exploration of all 33 Focal ML features using Gemini 2.5 Flash. Logged into Focal, explored transitions, effects, styles, aspect ratios. Screenshot save bug (path kwarg) not blocking. Ready for hands-on learning phase next.
+
+### Conversation transcripts stored on disk *****
+Full conversation transcripts already saved automatically at ~/.claude/projects/C--Projects-Clawdbot/[session-id].jsonl. Every message, tool call, token usage. Stats cache at ~/.claude/stats-cache.json. Debug logs at ~/.claude/debug/. File edit history at ~/.claude/file-history/.
 
 ### AIPulse plan pushed for Claude J *****
 Pushed AIPULSE_PLAN.md to 0ld3ULL/AIpulse repo. 16-step plan: Stage 1 (AI directory) + Stage 2 (community marketplace). Jet working on it from J computer. FLIPT codebase is foundation.
@@ -311,6 +317,13 @@ Implemented 10 Unity Editor tools via Coplay unity-mcp server (localhost:8080/mc
 ### Momo becomes Content Director — weekly calendar + daily content types *****
 Implemented Momo (GrowthAgent) as Content Director. NEW: weekly_content_calendar table in growth.db. plan_weekly_calendar() runs Monday 05:00 UTC — assigns video days (2-3/week), parable days (3-4/week), thread days (1-2/week). Daily planner reads weekly calendar and assigns content_type to each slot (tweet/video/parable/thread). Video slots get 2h lead time. Telegram summary shows content types per slot. Safety: video cap (max 1 pending), fallback to tweet on failure. Files: growth_agent.py, main.py, run_daily_tweets.py, operations_agent.py.
 
+### Feb 9 — Oprah Operations Agent Created *****
+Created personality/oprah.py and agents/operations_agent.py.
+Updated all 4 dashboard templates to show Oprah instead of Deva for operations.
+Committed 37 files (7339 insertions) including multi-session backlog.
+Pushed: a92f091..6753262 main -> main
+*Tags: oprah, dashboard, git*
+
 ### Feb 10 — Project Rename + Memory Launcher *****
 Renamed entire project from Clawdbot to The David Project (TDP). 21 files updated: main.py (DavidSystem), telegram_bot, oprah, scheduler, youtube, video_creator, gemini_client, evaluator, research_goals, master.yaml, DEVA-SETUP, Memory.md, etc. GitHub repo renamed to 0ld3ULL/the-david-project. Gemini alignment audit: 141 files, 383K tokens — confirmed clean rename. Created CLAUDE.md (auto-read by Claude Code at session start). Created Launch-Claude.bat desktop shortcut — generates fresh memory brief then opens Claude Code. Only fix from Gemini: added DAVID_DATA_DIR to .env.example.
 *Tags: rename, tdp, claude-md, launcher, gemini-audit*
@@ -320,13 +333,6 @@ Implemented all 6 features from transcript analysis: 1) Anti-repetition checkin 
 
 ### Fix: rejected tweets coming back as video scripts *****
 Fixed rewrite bug in operations_agent.py _handle_content_feedback(). action_type was read from context which was unreliable — rejected tweets requeued as script_review. Fix: now looks up original approval record by approval_id using get_by_id() to get true action_type.
-
-### Feb 9 — Oprah Operations Agent Created *****
-Created personality/oprah.py and agents/operations_agent.py.
-Updated all 4 dashboard templates to show Oprah instead of Deva for operations.
-Committed 37 files (7339 insertions) including multi-session backlog.
-Pushed: a92f091..6753262 main -> main
-*Tags: oprah, dashboard, git*
 
 ### Feb 9 — Video Intelligence System *****
 Built transcript_scraper.py (YouTube + TikTok via Supadata API).
