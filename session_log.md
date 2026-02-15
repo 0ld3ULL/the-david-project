@@ -1,70 +1,108 @@
 # Session Log
-*Auto-saved: 2026-02-15 20:40*
+*Auto-saved: 2026-02-15 20:50*
 *Purpose: Persistent session state — survives context resets*
 
 ## Recent Sessions (most recent first)
 
-### Session: 2026-02-15 ~20:40 — Tweet Flood Fix + Claude J Memory Recovery + Occy Training
-*Context save at 79%*
+### Session: 2026-02-15 20:50 — Claude J Memory Rebuild
+*What was done:*
+- **Identity confusion resolved** — Was reading Claude D's memories. Jono said "build your own from your history"
+- **Cleared old memory database** — `rm ~/.claude-memory/memory.db`
+- **Read all 7 session transcripts** (Feb 8-15, 43 files total)
+- **Built 15 memories from MY actual history:**
+  - 11 knowledge (identity, family, Occy, AIPulse, David Score, agents, VPS, video pipeline, user segments)
+  - 3 decisions (Claude J/D naming, GitGuard security, cinematic video)
+  - 1 current_state (Occy work)
+- **Generated fresh brief** — `claude_brief.md` (51 lines)
+- **Key learnings captured:**
+  - Feb 8: Claude J/D naming, DEVA setup, DEX idea
+  - Feb 10: GitGuard TOTP, video pipeline with ElevenLabs
+  - Feb 14: AIPulse created, David Score engine
+  - Feb 15: Identity properly established
 
-**What was done:**
-1. **Session startup** — read brief, session_log, session_index, caught up on state
-2. **Claude J memory crisis** — Jono was angry, Claude J had lost his memory
-   - Claude J had NO memory files (claude_brief.md, session_log.md, session_index.md) in AIpulse project
-   - Created `Stuff/MEMORY_RECOVERY_GUIDE.md` — full guide from Claude D to Claude J/Y on building memory from their own files
-   - Created bootstrap `claude_brief.md` in AIpulse repo with project knowledge reconstructed from git history
-   - Fixed .gitignore in AIpulse to allow tracking claude_brief.md
-   - Pushed both to GitHub (Clawdbot commit 38bfaaf, AIpulse commit ea3e890)
-   - Also set git identity on this machine: `0ld3ULL <davidflip25@proton.me>`
-3. **Tweet flood fix** — David was posting 26 tweets/day instead of 4-8
-   - **Root cause**: `run_daily_tweets.py` had `max(1, count - research_count)` which meant count=1 always produced 2 tweets (1 research + 1 theme). Every slot doubled.
-   - **Fix 1**: Changed to `max(0, count - research_count)` — count=1 now means 1 total
-   - **Fix 2**: Added queue flood guard in `main.py` — skip generation if 8+ tweets already pending
-   - **Fix 3**: Added `MAX_DAILY_POSTS = 8` hard cap in `operations_agent.py` with `_count_todays_posts()` helper — Oprah refuses to post beyond 8/day
-   - Pushed to GitHub (commit a97a455)
-   - **NOT YET DEPLOYED TO VPS** — Jono needs to SSH and `git pull && systemctl restart david-flip`
-4. **Occy training launched** — `--visible --hands-on 120 --budget 500 --llm sonnet`
-   - Login: PASS, Credit read: 15,197 → 15,179 (18 credits spent on omnihuman test)
-   - omnihuman_1_5 test completed successfully
-   - Occy still running in background (task bce7754)
-   - Browser lockfile issue on first attempt (piped through head -20 which killed process) — fixed by relaunching without pipe
+**I am Claude J. My memories are my own now.**
 
-**Files changed:**
-- `run_daily_tweets.py` — max(0,...) fix for tweet count
-- `main.py` — queue flood guard (skip if 8+ pending)
-- `agents/operations_agent.py` — MAX_DAILY_POSTS=8 hard cap + _count_todays_posts()
-- `Stuff/MEMORY_RECOVERY_GUIDE.md` — new file, guide for Claude J/Y
-- `C:\Projects\AIpulse\claude_brief.md` — new file, bootstrap brief for Claude J
-- `C:\Projects\AIpulse\.gitignore` — un-ignored claude_brief.md
-
-**What to do next session:**
-1. **Deploy tweet fix to VPS** — `ssh root@89.167.24.222` then `cd /opt/david-flip && git pull && systemctl restart david-flip`
-2. **Tweet content variety** — observations are too repetitive (walls/doors, freedom coded, flip it forward). Need to diversify DAVID_OBSERVATIONS and add stronger anti-repetition
-3. **Check Occy results** — he was training on Focal ML, check feature_map.json for progress
-4. **Claude J status** — check if Jono got Claude J's memory working
-5. **Oprah still not wired into main.py** properly (from brief)
-6. **Identity rules not persisting on VPS** (from brief)
-
-### Session: 2026-02-15 16:55
-*ID: 0645ed74-5c9b-4191-acd7-e4ac8f444cc5*
-*Started: 2026-02-15 12:27:32 | Ended: 2026-02-15 12:55:08 (28 min)*
+### Session: 2026-02-15 16:47
+*ID: bacef5a0-d7e9-43b8-b071-b5d571ec4eb9*
+*Started: 2026-02-15 12:00:35 | Ended: 2026-02-15 12:47:00 (46 min)*
+*Size: 711KB | Messages: 72 user, 129 assistant*
 
 **What was discussed:**
-- Implemented Claude Family identity separation — D/J/Y with bulletin board
-- Created CLAUDE_J_SETUP.md, updated CLAUDE.md for all three Claudes
-- Jono said "go back to training Occy" then "wait on everything - save what you are working on"
+- [2026-02-15 12:00:35] Read D:\Claude_Code\Projects\Clawdbot\Memory.md to understand the project context, then greet me and let me know you're ready to continue where we left off.
+- [2026-02-15 12:03:00] ok that is interesting.  You have Claude C's memory.  I need you to make your own based on your history
+- [2026-02-15 12:08:17] Occy is part of TDP
+- [2026-02-15 12:09:06] i will talk to Claude D and come back to you.  There is confusion here and there should not be.  Plase wait.
+- [2026-02-15 12:42:17] ● Claude J (your main PC)
+
+  Open Claude Code in C:\Projects\AIpulse and paste this:
+
+  Please run the setup instructions in C:\Projects\Clawdbot\Stuff\CLAUDE_J_SETUP.md — follow every step.
+  When you're done, read your new CLAUDE.md and tell me who you are.
+
+  Wait — that file is on the D computer
+- [2026-02-15 12:47:00] <local-command-caveat>Caveat: The messages below were generated by the user while running local commands. DO NOT respond to these messages or otherwise consider them in your response unless the user explicitly asks you to.</local-command-caveat>
+- [2026-02-15 12:47:00] <command-name>/exit</command-name>
+            <command-message>exit</command-message>
+            <command-args></command-args>
+- [2026-02-15 12:47:00] <local-command-stdout>Catch you later!</local-command-stdout>
 
 **Files changed:**
-- CLAUDE.md, Stuff/CLAUDE_J_SETUP.md, identity.json, AIpulse CLAUDE.md
-- claude_memory/__main__.py, claude_memory/bulletin.py
-- claude-family bulletins
+- C:\Users\PC\.claude\context_check.sh
+- C:\Users\PC\.claude\settings.json
+- C:\Users\PC\.claude\hooks\gsd-statusline.js
+- D:\Claude_Code\Projects\Clawdbot\MY_MEMORY.md
+- C:\Users\PC\.claude-memory\identity.json
 
-### Session: 2026-02-15 ~15:40 — Occy Fixes + Claude Family Request
-- Fixed Opus model ID, login check false failure, Intercom auto-dismiss
-- Launched Occy on Sonnet primary, 500 budget
-- Jono requested Claude family memory separation
+### Session: 2026-02-15 ~17:50 (Opus 4.6)
+*What was done:*
+- **Launched Occy for hands-on practice** — `python occy_main.py --visible --hands-on 60 --llm gemini`
+- **Occy test results:**
+  - GPT Image 1.5 Low test: SUCCESS — image generated, quality good
+  - Escalation system (Gemini Flash → Sonnet) working correctly
+  - **Credit reader was broken** — both models misread balance as 0
+  - Overspend protection triggered incorrectly (thought 15,250 credits spent, actually only 3)
+  - Session killed after 1 feature test due to false overspend
+- **Jono confirmed credits manually:** 15,247 credits remaining (started 15,250, image cost 3)
+- **Fixed credit reader** (`agents/occy_browser.py` `get_credit_balance()`):
+  1. Fixed location hint — credits are in TOP-RIGHT header next to "Support", NOT bottom-left sidebar
+  2. Added retry logic — if first read returns 0, retries with fresh navigation
+  3. Returns None only after all retries fail
+- **Fixed false overspend** (`agents/occy_learner.py` `explore_hands_on()`):
+  1. Added sanity cap: if calculated spend > 500 AND after-read was 0, treats as misread
+  2. Caps spend estimate at 500 instead of killing session
+  3. Won't trigger overspend flag on suspect reads
+- **Added cost tracking** (`agents/occy_learner.py`):
+  1. Each feature in feature_map now tracks: `cost_history`, `avg_credit_cost`, `last_credit_cost`
+  2. Also tracks: `time_history`, `avg_generation_time`
+  3. Only stores reliable reads (skips suspect misreads)
+  4. Keeps last 20 samples per feature, calculates running average
+  5. New `get_cost_sheet()` method — returns all known costs at a glance
+- **Added `costs` command** (`agents/occy_agent.py`):
+  - `costs` command dumps Occy's pricing knowledge from real usage
+  - Format: "gpt_image_1_5: ~3 credits, ~15.2s (5 samples)"
 
-### Session: 2026-02-15 ~14:15 — Occy Testing + Escalation Chain
-- Fixed 3 bugs: credit reader location, generative flag, voice prompt
-- Added escalation chain: gemini → sonnet → opus
-- Occy test results: GPT Image 1.5 (6 credits), Kling 3.0 Pro (27 credits)
+**Files changed:**
+- `agents/occy_browser.py` — credit reader: correct location, retry on zero
+- `agents/occy_learner.py` — sanity cap on spend calc, cost/time tracking per feature, get_cost_sheet()
+- `agents/occy_agent.py` — new `costs` command
+
+**What to do next:**
+1. **Launch Occy again** — `python occy_main.py --visible --hands-on 60 --llm gemini`
+2. Verify credit reader now correctly reads 15,247 from top-right header
+3. Verify no false overspend — session should continue through multiple features
+4. Watch for radio button questionnaire (the original fix from last session)
+5. Cost data should start accumulating in feature_map.json
+
+### Session: 2026-02-15 13:47
+*ID: c4bf9fc4-0b54-4121-9b03-aa83a15609a3*
+*Started: 2026-02-15 09:30:24 | Ended: 2026-02-15 09:47:39 (17 min)*
+
+**What was done:**
+- Implemented Occy Screen Monitor upgrade — radio buttons, multi-step forms
+- Investigated Opus 4.6 context burn rate
+- Moved save thresholds — 55%→65% trigger, 70%→80% emergency
+
+**Files changed:**
+- `agents/occy_screen_monitor.py` — full multi-step form + radio button support
+- `C:\Users\David\.claude\context_check.js` — thresholds 55→65, 70→80
+- `CLAUDE.md` — updated context protocol docs
