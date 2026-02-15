@@ -792,6 +792,13 @@ class DavidSystem:
             logger.info("Skipping content generation - kill switch active")
             return
 
+        # Don't flood the queue — skip if too many pending tweets already
+        pending = self.approval_queue.get_pending()
+        pending_tweets = [p for p in pending if p["action_type"] in ("tweet", "thread")]
+        if len(pending_tweets) >= 8:
+            logger.info(f"Skipping generation — already {len(pending_tweets)} pending tweets in queue")
+            return
+
         try:
             from run_daily_tweets import generate_tweets
             if not slot_label:

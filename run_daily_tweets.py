@@ -642,9 +642,11 @@ async def generate_tweets(
             logger.info(f"\nResearch tweets: {research_count} queued")
 
     # --- Phase 2: Theme-based tweets (fill remaining slots) ---
-    theme_slots = max(1, count - research_count)  # Always at least 1 theme tweet
+    theme_slots = max(0, count - research_count)  # Only fill remaining slots
     if topic:
         theme_slots = count  # If specific topic, all slots are theme-based
+    if theme_slots == 0:
+        logger.info(f"\nResearch filled all {count} slots — skipping theme tweets")
 
     logger.info(f"\n--- THEME TWEETS ({theme_slots} slots) ---\n")
     theme_count = await generate_theme_tweets(

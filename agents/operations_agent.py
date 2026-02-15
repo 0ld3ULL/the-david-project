@@ -582,14 +582,23 @@ class OperationsAgent:
             )
             return {"error": str(e)}
 
+    MAX_DAILY_POSTS = 8  # Hard cap — never post more than 8 tweets per day
+
     async def _execute_scheduled_tweet(self, content_data: dict) -> dict:
         """Execute a scheduled tweet (called by ContentScheduler at the scheduled time).
 
         Adds a 30-120 second random delay before posting so the actual firing
         time looks natural even if two tweets are close together.
+        Hard cap: MAX_DAILY_POSTS per day — refuse to post if exceeded.
         """
+        # Hard cap: don't post more than MAX_DAILY_POSTS per day
+        today_count = self._count_todays_posts()
+        if today_count >= self.MAX_DAILY_POSTS:
+            logger.warning(f"Daily post cap reached ({today_count}/{self.MAX_DAILY_POSTS}) — skipping tweet")
+            return {"skipped": True, "reason": f"Daily cap {self.MAX_DAILY_POSTS} reached"}
+
         delay = random.randint(30, 120)
-        logger.info(f"Tweet delay: waiting {delay}s before posting (natural jitter)")
+        logger.info(f"Tweet delay: waiting {delay}s before posting (natural jitter) [{today_count+1}/{self.MAX_DAILY_POSTS} today]")
         await asyncio.sleep(delay)
 
         action_type = content_data.get("action", "tweet")
@@ -814,6 +823,28 @@ class OperationsAgent:
             return delta.total_seconds() / 3600
         except (ValueError, TypeError):
             return None
+
+    def _count_todays_posts(self) -> int:
+        """Count how many tweets have been executed (posted) today."""
+        try:
+            import sqlite3
+            db_path = Path("data/approval_queue.db")
+            if not db_path.exists():
+                return 0
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            today = datetime.now().strftime("%Y-%m-%d")
+            row = conn.execute(
+                """SELECT COUNT(*) as cnt FROM approvals
+                   WHERE action_type IN ('tweet', 'thread')
+                   AND status = 'executed'
+                   AND executed_at LIKE ?""",
+                (f"{today}%",)
+            ).fetchone()
+            conn.close()
+            return row["cnt"] if row else 0
+        except Exception:
+            return 0
 
     # ------------------------------------------------------------------
     # Internal helpers
