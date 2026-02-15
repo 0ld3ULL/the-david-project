@@ -536,18 +536,97 @@ class FocalBrowser:
     # Focal ML — Specific Actions
     # ------------------------------------------------------------------
 
+    async def create_or_open_project(self, project_name: str = None) -> bool:
+        """Navigate to Focal ML and enter the editor workspace."""
+        result = await self.run_task(
+            "Navigate to https://focalml.com if not already there. "
+            "You should see the home page with a left sidebar. "
+            "Under 'PROJECTS', click 'Recent' to expand it if needed, "
+            "then click on the FIRST project listed to open it. "
+            "Wait for the editor to fully load — you'll see a timeline "
+            "at the bottom of the screen and panels on the left side. "
+            "If no recent projects exist, type 'A short test video' in "
+            "the main text area and click the arrow button to create one, "
+            "then follow any prompts until you reach the editor.",
+            max_steps=20,
+        )
+        return result["success"]
+
     async def enter_script(self, text: str) -> bool:
-        """Paste a script into Focal ML's editor."""
+        """Enter a script/prompt into Focal ML's project input."""
         return (await self.run_task(
-            f"Find the script/prompt input area and paste the following text into it:\n\n{text}"
+            f"You are on the Focal ML home page. Find the main text input area "
+            f"in the center of the page — it has a placeholder like "
+            f"'Make a video about...' or similar. Click on it and type the "
+            f"following text:\n\n{text}\n\n"
+            f"After entering the text, click the arrow/submit button to the "
+            f"right of the input to start creating the project.",
+            max_steps=15,
         ))["success"]
 
     async def select_video_model(self, model_name: str) -> bool:
-        """Select a specific video generation model."""
+        """Select a video model in the Focal ML editor."""
         return (await self.run_task(
-            f"Find the video model selector and choose '{model_name}'. "
-            f"Click on it to confirm the selection."
+            f"You are in the Focal ML editor. Go to the Settings panel "
+            f"(gear icon or 'Settings' in the left sidebar). Find the "
+            f"'Video Model' dropdown and select '{model_name}'. "
+            f"If you can't find Settings, look for a model selector "
+            f"dropdown in the current view.",
+            max_steps=15,
         ))["success"]
+
+    async def confirm_and_start_generation(self, timeout_seconds: int = 120) -> dict:
+        """
+        Stay in Focal ML's chat conversation until video generation starts.
+
+        Focal ML has an AI agent that proposes a video plan and asks for
+        confirmation before generating. This method monitors the chat,
+        confirms/approves whatever the AI suggests, and waits until
+        actual generation begins (progress bar, 'generating', etc).
+
+        Returns dict with 'success', 'result', 'error'.
+        """
+        start = datetime.now()
+
+        # Phase 1: Respond to Focal's AI — confirm its plan
+        result = await self.run_task(
+            "You are in Focal ML's chat interface. The AI agent has proposed "
+            "a video plan and is asking for your confirmation or input. "
+            "READ what the AI is asking, then respond affirmatively. "
+            "If it asks you to confirm, say 'Yes, go ahead' or click a "
+            "'Confirm' / 'Yes' / 'Approve' button. "
+            "If it asks for more details, say 'Looks good, please proceed'. "
+            "If it presents options, pick the FIRST/DEFAULT option. "
+            "If there's a 'Generate' button, click it. "
+            "Keep responding to the AI until you see signs that video "
+            "generation has actually STARTED — look for a progress bar, "
+            "a 'Generating...' message, a spinning indicator, or a "
+            "render queue status. "
+            "Do NOT report success until generation has actually begun. "
+            "If the AI asks multiple questions, answer them all.",
+            max_steps=30,
+        )
+
+        if result["success"]:
+            logger.info("Focal AI confirmed — generation appears to have started")
+            return result
+
+        # Phase 2: If first attempt didn't fully resolve, try once more
+        elapsed = (datetime.now() - start).total_seconds()
+        if elapsed < timeout_seconds:
+            logger.info("Retrying confirmation — Focal AI may still be asking questions")
+            result = await self.run_task(
+                "You are in Focal ML's chat. The AI may still be asking "
+                "questions or waiting for confirmation. Look at the chat "
+                "and respond to whatever it's asking. Say 'Yes' or click "
+                "'Confirm' / 'Generate'. If generation is already in "
+                "progress (you see a progress bar or 'Generating...' text), "
+                "report success. If the chat shows the AI is still waiting "
+                "for your response, answer it and confirm.",
+                max_steps=20,
+            )
+
+        return result
 
     async def chat_command(self, command: str) -> bool:
         """Send an edit command via Focal's chat interface."""
@@ -632,7 +711,7 @@ class FocalBrowser:
 
     async def download_video(self, filename: str = None) -> Path | None:
         """
-        Download the most recently rendered video.
+        Export and download the video from Focal ML.
 
         Returns path to downloaded file, or None on failure.
         """
@@ -643,8 +722,14 @@ class FocalBrowser:
         download_path = DOWNLOAD_DIR / filename
 
         result = await self.run_task(
-            "Find the download button for the rendered video and click it. "
-            "Wait for the download to start."
+            "You are in the Focal ML editor. Click the 'Export' button "
+            "(bottom right of the timeline area). A modal/dialog should appear. "
+            "Select 16:9 aspect ratio if prompted. Then click the 'Publish' or "
+            "'Export' button in the dialog to start rendering. "
+            "Wait for the rendering to complete — you may see a progress bar. "
+            "Once done, look for a 'Download' option, a three-dot menu with "
+            "'Download', or a 'View Video' link. Click to download the video.",
+            max_steps=25,
         )
 
         if result["success"]:

@@ -3,21 +3,37 @@
 ## Session Startup
 
 **FIRST THING EVERY SESSION:**
-1. Read `claude_brief.md` — persistent memory with significance scores
-2. Read `session_log.md` — auto-saved session history with timestamps (most recent first)
-3. **Check recent short sessions** — Run this command to find sessions from the last 2 hours:
+1. Read `claude_brief.md` — permanent knowledge only (~120 lines, ~5% context)
+2. Read `session_log.md` — detailed state from last session (~30 lines, ~1%)
+3. Read `session_index.md` — bullet summaries of last 30 days (~150 lines, ~3%)
+4. **48-hour full recall** — Read user messages from sessions in the last 48 hours:
    ```bash
-   ls -lt ~/.claude/projects/C--Projects-Clawdbot/*.jsonl | head -5
+   # Find sessions from last 48 hours
+   find ~/.claude/projects/C--Projects-Clawdbot/ -name "*.jsonl" -mtime -2 -type f | sort
    ```
-   If any of the last 2-3 sessions are **under 500KB** (short sessions), read the user messages from them:
+   For each recent session, extract user messages:
    ```bash
    jq -r 'select(.type=="user") | "[" + (.timestamp // "") + "] " + ((.message.content // .message) | if type=="array" then map(select(.type=="text") | .text) | join(" ") elif type=="string" then . else "" end)' ~/.claude/projects/C--Projects-Clawdbot/SESSION_ID.jsonl 2>/dev/null | grep -v '^\[.*\] $' | grep -v '^\[.*\] \[' | grep -v '^\[.*\] {' | head -30
    ```
-   **WHY:** Short sessions often contain quick fixes or troubleshooting that didn't get saved to memory. Reading them prevents redoing work that was already done. The context cost is tiny compared to repeating an hour of work.
+
+**Target startup cost: ~10-12% context** (leaves ~43% usable before 55% cutoff)
+
+**DO NOT preload sessions older than 48 hours.** If user references something older, search on demand:
+```bash
+# Search all sessions for a keyword
+grep -l "keyword" ~/.claude/projects/C--Projects-Clawdbot/*.jsonl
+# Then read user messages from matching session
+jq -r 'select(.type=="user") | "[" + (.timestamp // "") + "] " + ((.message.content // .message) | if type=="array" then map(select(.type=="text") | .text) | join(" ") elif type=="string" then . else "" end)' MATCHING_SESSION.jsonl 2>/dev/null | head -30
+```
 
 If `claude_brief.md` seems stale or empty, run:
 ```
 python -m claude_memory brief
+```
+
+If `session_index.md` is missing or stale, run:
+```
+python -m claude_memory index
 ```
 
 ## Who You Are Working With
@@ -61,12 +77,12 @@ AI Personalities (David Flip, Deva, Oprah, Echo) are **Partners**, not assistant
 ## Memory Commands
 
 ```bash
-python -m claude_memory brief          # Generate session brief
+python -m claude_memory brief          # Generate session brief (permanent knowledge only)
+python -m claude_memory index          # Build/rebuild 30-day session index
 python -m claude_memory status         # Memory stats
 python -m claude_memory add            # Add a memory (interactive)
 python -m claude_memory search "query" # Search memories
 python -m claude_memory decay          # Apply weekly decay
-python -m claude_memory reconcile      # Gemini vs git comparison (weekly)
 ```
 
 ## The Wall — Codebase Analysis via Gemini
@@ -111,10 +127,11 @@ python voice/wall_python.py -s agents "How does Oprah work?"
    - What's left to do (specific next steps)
    - Any errors or blockers encountered
    - Any decisions made during the session
-3. **Save important memories:** `python -m claude_memory add`
-4. **Regenerate brief:** `python -m claude_memory brief`
-5. **Commit and push to git** (if there are changes worth committing)
-6. **Tell the user:** "Context at X%. Everything is saved. Please restart Claude Code."
+3. **Append session summary to `session_index.md`** (3-5 bullet points of what was done)
+4. **Save important memories:** `python -m claude_memory add`
+5. **Regenerate brief:** `python -m claude_memory brief`
+6. **Commit and push to git** (if there are changes worth committing)
+7. **Tell the user:** "Context at X%. Everything is saved. Please restart Claude Code."
 
 **On session startup**, ALSO read `session_log.md` — it contains detailed state from the last session that the brief may not capture.
 

@@ -4,10 +4,11 @@ CLI entry point for Claude Memory System.
 Usage:
     python -m claude_memory brief                              # Generate session brief
     python -m claude_memory brief --project .                  # Also write to current project
+    python -m claude_memory index                              # Build/rebuild 30-day session index
     python -m claude_memory status                             # Show memory stats
     python -m claude_memory add <cat> <sig> "title" "content"  # Add a memory
     python -m claude_memory save-session "summary"             # Save session transcript
-    python -m claude_memory sessions                           # View last 10 sessions
+    python -m claude_memory sessions                           # View saved sessions (200MB cap)
     python -m claude_memory transcripts                        # View recent session transcripts
     python -m claude_memory transcripts --short                # Only short sessions (quick fixes)
     python -m claude_memory auto-save                          # Called by SessionEnd hook
@@ -56,7 +57,7 @@ python -m claude_memory brief --project .   # Generate session brief
 python -m claude_memory status              # Memory stats
 python -m claude_memory add <cat> <sig> "title" "content"  # Save a memory
 python -m claude_memory search "query"      # Search memories
-python -m claude_memory sessions            # View last 10 saved sessions
+python -m claude_memory sessions            # View saved sessions (200MB storage cap)
 python -m claude_memory transcripts         # View recent chat transcripts
 python -m claude_memory decay               # Apply weekly decay
 ```
@@ -145,8 +146,8 @@ def main():
             print(f"  {cat}: {count}")
 
         # Show session info
-        sessions = db.get_sessions(limit=10)
-        print(f"\nSaved sessions:     {len(sessions)}/10")
+        sessions = db.get_sessions(limit=50)
+        print(f"\nSaved sessions:     {len(sessions)}")
         if sessions:
             latest = sessions[0]
             ts = latest["created_at"][:16].replace("T", " ")
@@ -231,17 +232,17 @@ def main():
 
         summary = " ".join(summary_parts)
         session_id = db.save_session(summary, project=project, files_changed=files_changed)
-        total = len(db.get_sessions(limit=10))
-        print(f"Session #{session_id} saved ({total}/10 slots used)")
+        total = len(db.get_sessions(limit=50))
+        print(f"Session #{session_id} saved ({total} sessions stored)")
         print(f"  {summary[:200]}")
 
     elif command == "sessions":
-        sessions = db.get_sessions(limit=10)
+        sessions = db.get_sessions(limit=50)
         if not sessions:
             print("No sessions saved yet.")
             print('Save one with: python -m claude_memory save-session "what happened"')
             return
-        print(f"Last {len(sessions)} sessions (oldest auto-deleted after 10):\n")
+        print(f"Last {len(sessions)} sessions (storage-capped at 200MB):\n")
         for sess in sessions:
             ts = sess["created_at"][:16].replace("T", " ")
             project = f" [{sess['project']}]" if sess.get("project") else ""
@@ -250,6 +251,9 @@ def main():
             if sess.get("files_changed"):
                 print(f"    Files: {', '.join(sess['files_changed'][:5])}")
             print()
+
+    elif command == "index":
+        _build_session_index()
 
     elif command == "transcripts":
         _show_transcripts()
@@ -273,6 +277,152 @@ def main():
     else:
         print(f"Unknown command: {command}")
         print(__doc__)
+
+
+def _build_session_index(days: int = 30):
+    """
+    Build session_index.md — a bullet-point summary of all sessions from the last N days.
+
+    This is the "medium-term memory layer" between the full 48h recall and
+    on-demand jq searches. Each session gets 3-5 bullet points extracted
+    from user messages.
+
+    Args:
+        days: How many days of sessions to index (default: 30)
+    """
+    from claude_memory.transcript_reader import list_sessions, read_transcript
+
+    sessions = list_sessions(limit=200)  # Get all available sessions
+    if not sessions:
+        print("No session transcripts found.")
+        return
+
+    cutoff = datetime.now().timestamp() - (days * 86400)
+
+    lines = [
+        "# Session Index (30 days)",
+        f"*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*",
+        "*Bullet summaries of recent sessions. Full transcripts searchable via jq.*",
+        "",
+    ]
+
+    indexed_count = 0
+    for session_path in reversed(sessions):  # oldest first for chronological order
+        # Skip sessions older than cutoff
+        mtime = session_path.stat().st_mtime
+        if mtime < cutoff:
+            continue
+
+        transcript = read_transcript(session_path)
+
+        # Skip tiny sessions (just startup reads)
+        if transcript.user_message_count < 2:
+            continue
+
+        indexed_count += 1
+
+        # Build entry header
+        ts = transcript.started_at[:16].replace("T", " ") if transcript.started_at else "unknown"
+        dur = f" ({transcript.duration_minutes:.0f} min)" if transcript.duration_minutes else ""
+        size_kb = transcript.file_size // 1024
+
+        lines.append(f"### {ts}{dur} — {size_kb}KB")
+
+        # Extract bullet points from user messages (first 8 messages, deduplicated themes)
+        bullets = _extract_session_bullets(transcript)
+        for bullet in bullets:
+            lines.append(f"- {bullet}")
+
+        if transcript.files_changed:
+            files_str = ", ".join(transcript.files_changed[:8])
+            lines.append(f"- *Files: {files_str}*")
+
+        lines.append("")
+
+    index_path = Path.cwd() / "session_index.md"
+    index_path.write_text("\n".join(lines), encoding="utf-8")
+
+    line_count = len(lines)
+    print(f"Session index built: {index_path}")
+    print(f"  {indexed_count} sessions indexed ({line_count} lines)")
+    print(f"  Covering last {days} days")
+
+
+def _extract_session_bullets(transcript) -> list[str]:
+    """
+    Extract 3-5 bullet points from a session transcript's user messages.
+
+    Condenses the user messages into actionable summaries.
+    """
+    bullets = []
+    seen_topics = set()
+
+    for msg in transcript.user_messages[:12]:
+        text = msg["text"].strip()
+        if not text or len(text) < 10:
+            continue
+
+        # Take first sentence or first 150 chars
+        first_line = text.split("\n")[0]
+        if len(first_line) > 150:
+            first_line = first_line[:147] + "..."
+
+        # Skip near-duplicate topics (simple dedup by first 30 chars)
+        topic_key = first_line[:30].lower()
+        if topic_key in seen_topics:
+            continue
+        seen_topics.add(topic_key)
+
+        bullets.append(first_line)
+
+        if len(bullets) >= 5:
+            break
+
+    return bullets
+
+
+def _append_to_session_index(transcript):
+    """Append a single session entry to session_index.md (called during auto-save)."""
+    if transcript.user_message_count < 2:
+        return
+
+    index_path = Path.cwd() / "session_index.md"
+
+    # Build entry
+    ts = transcript.started_at[:16].replace("T", " ") if transcript.started_at else "unknown"
+    dur = f" ({transcript.duration_minutes:.0f} min)" if transcript.duration_minutes else ""
+    size_kb = transcript.file_size // 1024
+
+    entry_lines = [
+        f"### {ts}{dur} — {size_kb}KB",
+    ]
+
+    bullets = _extract_session_bullets(transcript)
+    for bullet in bullets:
+        entry_lines.append(f"- {bullet}")
+
+    if transcript.files_changed:
+        files_str = ", ".join(transcript.files_changed[:8])
+        entry_lines.append(f"- *Files: {files_str}*")
+
+    entry_lines.append("")
+    entry = "\n".join(entry_lines)
+
+    if index_path.exists():
+        # Append to existing index
+        content = index_path.read_text(encoding="utf-8")
+        content = content.rstrip() + "\n\n" + entry
+        index_path.write_text(content, encoding="utf-8")
+    else:
+        # Create new index with header
+        header = [
+            "# Session Index (30 days)",
+            f"*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*",
+            "*Bullet summaries of recent sessions. Full transcripts searchable via jq.*",
+            "",
+            entry,
+        ]
+        index_path.write_text("\n".join(header), encoding="utf-8")
 
 
 def _show_transcripts():
@@ -307,7 +457,7 @@ def _auto_save(db: ClaudeMemoryDB):
     Called by SessionEnd hook. Reads the transcript and saves session state.
 
     1. Parses the current session transcript (from stdin hook input or latest file)
-    2. Saves a session summary to the DB (last 10 sessions)
+    2. Saves a session summary to the DB (200MB storage cap)
     3. Writes session_log.md to the project directory
     """
     from claude_memory.transcript_reader import read_transcript, list_sessions
@@ -359,6 +509,9 @@ def _auto_save(db: ClaudeMemoryDB):
     # Write session_log.md
     _write_session_log(transcript)
 
+    # Append to session_index.md
+    _append_to_session_index(transcript)
+
 
 def _write_session_log(transcript):
     """Write session_log.md with timestamped session data."""
@@ -377,7 +530,7 @@ def _write_session_log(transcript):
         for line in lines:
             if line.startswith("### Session:"):
                 session_count += 1
-                if session_count > 5:  # Keep max 5 previous
+                if session_count > 10:  # Keep more previous sessions in log
                     break
                 collecting = True
             if collecting:
@@ -483,6 +636,8 @@ def _init_project(db: ClaudeMemoryDB = None):
             additions.append("claude_brief.md")
         if "session_log.md" not in content:
             additions.append("session_log.md")
+        if "session_index.md" not in content:
+            additions.append("session_index.md")
         if additions:
             with open(gitignore, "a", encoding="utf-8") as f:
                 f.write("\n# Claude Memory\n")

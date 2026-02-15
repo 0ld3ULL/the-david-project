@@ -70,6 +70,7 @@ class OccyAgent:
         self._learner = None
         self._producer = None
         self._reviewer = None
+        self._monitor = None
         self._headless = headless
 
         # State
@@ -237,6 +238,16 @@ class OccyAgent:
                 audit_log=self.audit_log,
             )
         return self._producer
+
+    def _get_monitor(self):
+        """Get or create the screen monitor — Occy's persistent eyes."""
+        if self._monitor is None:
+            from agents.occy_screen_monitor import ScreenMonitor
+            self._monitor = ScreenMonitor(
+                browser=self._browser,
+                check_interval=10.0,
+            )
+        return self._monitor
 
     # ------------------------------------------------------------------
     # Operations
@@ -419,6 +430,114 @@ class OccyAgent:
 
         except Exception as e:
             logger.error(f"Production failed: {e}")
+            return {"error": str(e)}
+        finally:
+            self._mode = "idle"
+
+    async def produce_test_clip(self, prompt: str = None) -> dict:
+        """
+        Produce a single test video clip — bypasses job queue for quick testing.
+
+        Uses the ScreenMonitor to stay engaged with Focal ML's chat-based
+        workflow. Instead of fire-and-forget, Occy watches the screen and
+        responds to Focal's AI questions (confirmations, options, etc).
+
+        Run with --visible to watch and debug.
+        """
+        if not self._running:
+            return {"error": "Agent not started — call start() first"}
+
+        browser = self._browser
+        if not browser:
+            return {"error": "No browser available"}
+
+        self._mode = "producing"
+        test_prompt = prompt or "A person walking through a park on a sunny day"
+        monitor = self._get_monitor()
+
+        try:
+            # Step 1: Check credits
+            credits_before = await browser.get_credit_balance()
+            logger.info(f"Credits before: {credits_before}")
+
+            # Step 2: Enter prompt on the home page
+            logger.info("Step 1: Entering prompt...")
+            result = await browser.run_task(
+                f"You are on the Focal ML home page (focalml.com). "
+                f"Find the main text input area in the center — it has a "
+                f"placeholder like 'Make a video about...' or similar. "
+                f"Click on it and type:\n\n{test_prompt}\n\n"
+                f"Then click the arrow/submit button to start.",
+                max_steps=15,
+            )
+            if not result["success"]:
+                await browser.take_screenshot("test_clip_fail_prompt")
+                return {"error": "Failed to enter prompt", "details": result.get("result")}
+            await browser.take_screenshot("test_clip_01_prompt_entered")
+
+            # Step 3: Monitor and interact with Focal's AI
+            # This is the key change — instead of passive waiting, Occy
+            # watches the screen and responds to Focal's questions.
+            logger.info("Step 2: Monitoring screen — responding to Focal AI...")
+            monitor.set_context(
+                "trying to generate a video on Focal ML. I just entered a "
+                "prompt and the Focal AI agent may ask me questions about "
+                "the video (style, duration, confirmation). I want to "
+                "approve/confirm everything and get the video generated "
+                "with the cheapest settings possible."
+            )
+
+            render_result = await monitor.wait_with_monitoring(
+                timeout_seconds=300,
+            )
+
+            if not render_result["completed"]:
+                await browser.take_screenshot("test_clip_fail_render")
+                logger.warning(
+                    f"Generation incomplete after {render_result['duration_seconds']:.0f}s, "
+                    f"{render_result['interactions']} interactions handled"
+                )
+                # Even if it timed out, Focal may have finished but the
+                # completion text didn't match — try to download anyway
+                if render_result["interactions"] > 0:
+                    logger.info("Had interactions — checking if video is available anyway...")
+                else:
+                    return {
+                        "error": "Generation failed or timed out",
+                        "details": render_result,
+                    }
+
+            await browser.take_screenshot("test_clip_02_complete")
+            logger.info(
+                f"Step 2 done: {render_result.get('interactions', 0)} interactions, "
+                f"{render_result.get('duration_seconds', 0):.0f}s elapsed"
+            )
+
+            # Step 4: Export and download
+            logger.info("Step 3: Exporting...")
+            video_path = await browser.download_video(filename="test_clip.mp4")
+
+            # Step 5: Measure credit cost
+            credits_after = await browser.get_credit_balance()
+            credits_spent = 0
+            if credits_before and credits_after:
+                credits_spent = max(0, credits_before - credits_after)
+
+            logger.info(
+                f"Test clip complete: credits_spent={credits_spent}, "
+                f"video_path={video_path}"
+            )
+
+            return {
+                "success": video_path is not None,
+                "video_path": str(video_path) if video_path else None,
+                "credits_spent": credits_spent,
+                "render_time": render_result.get("duration_seconds", 0),
+                "interactions": render_result.get("interactions", 0),
+            }
+
+        except Exception as e:
+            logger.error(f"Test clip failed: {e}")
             return {"error": str(e)}
         finally:
             self._mode = "idle"

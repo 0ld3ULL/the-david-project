@@ -4,8 +4,9 @@ Brief Generator — Produces a concise claude_brief.md for session startup.
 Reads the memory database, applies decay if due, and generates a
 markdown file organized by category and significance.
 
-This is what Claude Code reads at the start of every session —
-a compact summary of everything it needs to remember.
+This brief holds PERMANENT knowledge only — things that never change
+or are always needed. Short-term memory comes from reading recent
+session transcripts (48h full recall + 30-day session index).
 """
 
 from datetime import datetime, timedelta
@@ -22,18 +23,15 @@ DECAY_INTERVAL_DAYS = 7
 
 def generate_brief(db: ClaudeMemoryDB, output_path: Path = None, project_path: Path = None) -> str:
     """
-    Generate a session brief from the memory database.
+    Generate a trimmed session brief from the memory database.
+
+    Only includes PERMANENT knowledge and ACTIVE blockers.
+    Short-term memory comes from session transcripts (48h recall + 30-day index).
 
     Args:
         db: Memory database instance
         output_path: Where to write the brief (default: ~/.claude-memory/brief.md)
         project_path: If provided, also writes claude_brief.md to this directory
-
-    Steps:
-    1. Check if decay is due (weekly) — apply if needed
-    2. Prune forgotten items
-    3. Export memories organized by category
-    4. Write concise brief to file(s)
 
     Returns:
         Path to the generated brief file
@@ -54,14 +52,33 @@ def generate_brief(db: ClaudeMemoryDB, output_path: Path = None, project_path: P
         # First run — apply initial decay
         db.decay()
 
-    # --- Step 2: Gather memories ---
+    # --- Step 2: Gather memories with aggressive filtering ---
     stats = db.get_stats()
 
     all_memories = db.export_all(min_strength=0.0)
 
-    # Split by category
+    # ONLY include these categories — everything else is searchable on demand
+    include_categories = {
+        "knowledge": 9,       # Only foundational permanent knowledge (sig >= 9)
+        "current_state": 8,   # Only active blockers (sig >= 8)
+    }
+
+    # Split by category and filter aggressively
     categories = {}
     for mem in all_memories:
+        # Only include whitelisted categories
+        if mem.category not in include_categories:
+            continue
+
+        # Apply significance threshold
+        threshold = include_categories[mem.category]
+        if mem.significance < threshold:
+            continue
+
+        # Skip blank/fading memories
+        if mem.recall_strength < 0.3:
+            continue
+
         if mem.category not in categories:
             categories[mem.category] = []
         categories[mem.category].append(mem)
@@ -71,18 +88,15 @@ def generate_brief(db: ClaudeMemoryDB, output_path: Path = None, project_path: P
     lines.append("# Claude Session Brief")
     lines.append(f"*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*")
     lines.append(f"*Memories: {stats['total']} total — "
-                 f"{stats['clear']} clear, {stats['fuzzy']} fuzzy, "
-                 f"{stats['fading']} fading*")
-    lines.append(f"*Last decay: {stats['last_decay']}*")
+                 f"showing only sig >= 9 knowledge + sig >= 8 blockers*")
+    lines.append("*Short-term memory: loaded from session transcripts (48h) + session index (30 days)*")
     lines.append("")
 
-    # Category order: knowledge first, then current_state, decisions, sessions
-    category_order = ["knowledge", "current_state", "decision", "session"]
+    # Category order: knowledge first, then current_state
+    category_order = ["knowledge", "current_state"]
     category_labels = {
-        "knowledge": "Permanent Knowledge (never fades)",
-        "current_state": "Current State (manually updated)",
-        "decision": "Decisions",
-        "session": "Session History",
+        "knowledge": "Permanent Knowledge",
+        "current_state": "Active Blockers & State",
     }
 
     for cat in category_order:
@@ -95,10 +109,6 @@ def generate_brief(db: ClaudeMemoryDB, output_path: Path = None, project_path: P
         lines.append("")
 
         for mem in memories:
-            # Skip blank memories in the brief (they're fading out)
-            if mem.state == "blank" and cat not in ("knowledge", "current_state"):
-                continue
-
             # Format based on state
             if mem.state == "clear":
                 prefix = ""
@@ -107,9 +117,7 @@ def generate_brief(db: ClaudeMemoryDB, output_path: Path = None, project_path: P
             else:
                 prefix = "[fading] "
 
-            sig_indicator = "*" * min(mem.significance, 5)  # Visual significance
-
-            lines.append(f"### {prefix}{mem.title} {sig_indicator}")
+            lines.append(f"### {prefix}{mem.title}")
             lines.append(mem.content)
 
             if mem.tags:
@@ -117,38 +125,12 @@ def generate_brief(db: ClaudeMemoryDB, output_path: Path = None, project_path: P
 
             lines.append("")
 
-    # Handle any categories not in our order
-    for cat, memories in categories.items():
-        if cat in category_order:
-            continue
-        lines.append(f"## {cat.title()}")
-        lines.append("")
-        for mem in memories:
-            if mem.state == "blank":
-                continue
-            lines.append(f"### {mem.title}")
-            lines.append(mem.content)
-            lines.append("")
-
-    # --- Step 3b: Recent Sessions (last 10 auto-captured) ---
-    sessions = db.get_sessions(limit=10)
-    if sessions:
-        lines.append("## Recent Sessions (auto-captured, oldest auto-deleted after 10)")
-        lines.append("")
-        for sess in sessions:
-            ts = sess["created_at"][:16].replace("T", " ")
-            project = f" [{sess['project']}]" if sess.get("project") else ""
-            lines.append(f"### {ts}{project}")
-            lines.append(sess["summary"])
-            if sess.get("files_changed"):
-                lines.append(f"*Files: {', '.join(sess['files_changed'][:10])}*")
-            lines.append("")
-
     # --- Step 4: Footer ---
     lines.append("---")
     lines.append("## Memory Commands")
     lines.append("```")
     lines.append("python -m claude_memory brief          # Regenerate this file")
+    lines.append("python -m claude_memory index          # Rebuild 30-day session index")
     lines.append("python -m claude_memory status         # Memory stats")
     lines.append('python -m claude_memory add <cat> <sig> "title" "content"')
     lines.append('python -m claude_memory search "query" # Search memories')

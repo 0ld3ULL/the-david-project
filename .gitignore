@@ -27,3 +27,8 @@ bridges/*/node_modules/
 # OS
 Thumbs.db
 .DS_Store
+
+# Claude Memory (auto-generated)
+claude_brief.md
+session_log.md
+session_index.md

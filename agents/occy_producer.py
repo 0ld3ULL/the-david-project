@@ -448,13 +448,9 @@ class OccyProducer:
         model = plan.get("model", "seedance")
         adjustments = plan.get("adjustments", "")
 
-        # Step 1: Create new project
-        result = await self.browser.run_task(
-            "Create a new video project in Focal ML. "
-            "Click the 'Create' or 'New Project' button."
-        )
-        if not result["success"]:
-            return {"success": False, "error": "Failed to create project"}
+        # Step 1: Get into the editor
+        if not await self.browser.create_or_open_project():
+            return {"success": False, "error": "Failed to enter Focal editor"}
 
         # Step 2: Enter script
         script = job.script or job.description
@@ -470,9 +466,11 @@ class OccyProducer:
 
         # Step 4: Configure and start render
         result = await self.browser.run_task(
-            "Review the current settings. If everything looks correct, "
-            "click the 'Generate' or 'Render' button to start video generation. "
-            "Do NOT change settings unless something is clearly wrong."
+            "You are in the Focal ML editor with script and model configured. "
+            "Click the 'Generate' or 'Render' button to start video generation. "
+            "The button is typically at the bottom or right side of the editor. "
+            "Do NOT change settings unless something is clearly wrong.",
+            max_steps=15,
         )
         if not result["success"]:
             return {"success": False, "error": "Failed to start render"}

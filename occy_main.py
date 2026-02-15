@@ -227,6 +227,23 @@ class OccySystem:
         finally:
             await self.agent.stop()
 
+    async def start_test_clip(self, prompt: str = None):
+        """Start Occy, produce one test clip, then stop."""
+        logger.info("Running test clip production")
+        success = await self.agent.start()
+        if not success:
+            logger.error("Failed to start — cannot produce test clip")
+            return
+        try:
+            result = await self.agent.produce_test_clip(prompt)
+            logger.info(f"Test clip result: {json.dumps(result, indent=2)}")
+            if result.get("success"):
+                logger.info(f"SUCCESS — Video saved to: {result['video_path']}")
+            else:
+                logger.error(f"FAILED — {result.get('error')}")
+        finally:
+            await self.agent.stop()
+
     async def print_status(self):
         """Print current status and exit."""
         status = self.agent.get_status()
@@ -303,6 +320,14 @@ def parse_args():
         help="Print current status and exit"
     )
     parser.add_argument(
+        "--test-clip", action="store_true", dest="test_clip",
+        help="Produce a single test video clip and exit (fast end-to-end test)"
+    )
+    parser.add_argument(
+        "--prompt", type=str, default=None,
+        help="Custom prompt for --test-clip (default: 'A person walking through a park')"
+    )
+    parser.add_argument(
         "--llm", choices=["gemini", "sonnet", "ollama"],
         default="gemini",
         help="LLM provider for browser automation: gemini (fast, default), sonnet (reliable), ollama (local/free)"
@@ -329,6 +354,10 @@ async def main():
         except NotImplementedError:
             # Windows doesn't support add_signal_handler
             pass
+
+    if args.test_clip:
+        await system.start_test_clip(args.prompt)
+        return
 
     if args.status:
         await system.print_status()
