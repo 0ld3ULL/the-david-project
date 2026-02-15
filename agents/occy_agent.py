@@ -627,6 +627,19 @@ class OccyAgent:
             progress = self.get_learning_progress()
             return json.dumps(progress, indent=2)
 
+        elif command == "costs":
+            costs = self._learner.get_cost_sheet()
+            if not costs:
+                return "No cost data yet — need more hands-on testing."
+            lines = ["Focal ML Cost Sheet (from real usage):", ""]
+            for name, info in sorted(costs.items()):
+                line = f"  {name}: ~{info['avg_credits']} credits"
+                if info.get("avg_time_seconds"):
+                    line += f", ~{info['avg_time_seconds']}s"
+                line += f" ({info['samples']} samples)"
+                lines.append(line)
+            return "\n".join(lines)
+
         elif command == "queue":
             queue = self.get_job_queue()
             return json.dumps(queue, indent=2)
@@ -641,6 +654,7 @@ class OccyAgent:
                 "  produce <job_id> — Execute approved job\n"
                 "  screenshot [name] — Take screenshot\n"
                 "  credits — Check Focal credit balance\n"
+                "  costs — What things cost (from experience)\n"
                 "  progress — Learning progress\n"
                 "  queue — Job queue status"
             )

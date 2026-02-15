@@ -716,8 +716,23 @@ class OccyLearner:
         if credits_after is not None and credits_before is not None:
             credits_spent = max(0, credits_before - credits_after)
 
+        # Sanity check: if credits_after is 0 and credits_before was large,
+        # the credit reader probably failed (both Gemini and Sonnet frequently
+        # misread the balance as 0). Don't treat a bad read as overspend.
+        # Max plausible single-generation cost on Focal is ~500 credits.
+        MAX_PLAUSIBLE_SINGLE_COST = 500
+        credit_read_suspect = False
+        if credits_spent > MAX_PLAUSIBLE_SINGLE_COST and credits_after == 0:
+            logger.warning(
+                f"Credit read suspect: before={credits_before}, after={credits_after}, "
+                f"calculated_spend={credits_spent}. Likely a misread — "
+                f"capping spend estimate at {MAX_PLAUSIBLE_SINGLE_COST}"
+            )
+            credits_spent = MAX_PLAUSIBLE_SINGLE_COST
+            credit_read_suspect = True
+
         # Check for overspend against per-test budget
-        overspent = credits_spent > credit_budget
+        overspent = credits_spent > credit_budget and not credit_read_suspect
         if overspent:
             logger.warning(
                 f"OVERSPEND: {feature_name} used {credits_spent} credits "
@@ -774,7 +789,11 @@ class OccyLearner:
         else:
             confidence_delta = 0.05  # Failed generation still teaches something
 
-        self._update_feature_progress(category, feature_name, confidence_delta, knowledge_id)
+        self._update_feature_progress(
+            category, feature_name, confidence_delta, knowledge_id,
+            credits_spent=credits_spent if not credit_read_suspect else 0,
+            generation_time=generation_time,
+        )
 
         if self.audit_log:
             self.audit_log.log(
@@ -951,8 +970,9 @@ class OccyLearner:
     def _update_feature_progress(
         self, category: str, feature_name: str,
         confidence_delta: float, knowledge_id: int = None,
+        credits_spent: int = 0, generation_time: float = 0,
     ):
-        """Update a feature's confidence and tracking info in the feature map."""
+        """Update a feature's confidence, cost history, and tracking info."""
         for feat in self.feature_map.get("categories", {}).get(category, {}).get("features", []):
             if feat["name"] == feature_name:
                 feat["confidence"] = min(1.0, feat["confidence"] + confidence_delta)
@@ -960,6 +980,30 @@ class OccyLearner:
                 feat["last_explored"] = datetime.now().isoformat()
                 if knowledge_id:
                     feat.setdefault("knowledge_ids", []).append(knowledge_id)
+
+                # Track credit costs — builds up over time so Occy knows
+                # "GPT Image 1.5 Low costs ~3 credits" off the top of his head
+                if credits_spent > 0:
+                    cost_history = feat.setdefault("cost_history", [])
+                    cost_history.append(credits_spent)
+                    # Keep last 20 readings
+                    if len(cost_history) > 20:
+                        feat["cost_history"] = cost_history[-20:]
+                    feat["avg_credit_cost"] = round(
+                        sum(feat["cost_history"]) / len(feat["cost_history"]), 1
+                    )
+                    feat["last_credit_cost"] = credits_spent
+
+                # Track generation times similarly
+                if generation_time > 0:
+                    time_history = feat.setdefault("time_history", [])
+                    time_history.append(round(generation_time, 1))
+                    if len(time_history) > 20:
+                        feat["time_history"] = time_history[-20:]
+                    feat["avg_generation_time"] = round(
+                        sum(feat["time_history"]) / len(feat["time_history"]), 1
+                    )
+
                 break
 
         self._save_feature_map()
@@ -1128,3 +1172,23 @@ class OccyLearner:
             "progress_pct": round(explored / total * 100, 1) if total > 0 else 0,
             "by_category": by_category,
         }
+
+    def get_cost_sheet(self) -> dict:
+        """
+        Get Occy's accumulated knowledge of what things cost on Focal ML.
+
+        Returns a dict of feature_name -> cost info, built from real usage.
+        This is Occy's "off the top of his head" pricing knowledge.
+        """
+        costs = {}
+        for cat_name, cat_data in self.feature_map.get("categories", {}).items():
+            for feat in cat_data.get("features", []):
+                if feat.get("avg_credit_cost") is not None:
+                    costs[feat["name"]] = {
+                        "category": cat_name,
+                        "avg_credits": feat["avg_credit_cost"],
+                        "last_cost": feat.get("last_credit_cost"),
+                        "avg_time_seconds": feat.get("avg_generation_time"),
+                        "samples": len(feat.get("cost_history", [])),
+                    }
+        return costs

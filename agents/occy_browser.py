@@ -682,31 +682,59 @@ class FocalBrowser:
         await self.take_screenshot("render_timeout")
         return {"completed": False, "duration_seconds": timeout_seconds, "error": "Timeout"}
 
-    async def get_credit_balance(self) -> int | None:
+    async def get_credit_balance(self, retries: int = 2) -> int | None:
         """
         Read the current Focal ML credit balance from the UI.
 
+        Both Gemini Flash and Sonnet frequently misread the balance as 0
+        when it isn't. To compensate, we retry reads that return 0 and
+        navigate to the home page first on retry to get a clean view.
+
         Returns credit count as integer, or None if couldn't read it.
         """
-        result = await self.run_task(
-            "You are on focalml.com. Find the credit balance display "
-            "(it shows 'X Credits' in the left sidebar or header). "
-            "If you're not on focalml.com, navigate there first. "
-            "Read the credit number and report it. Return ONLY the number.",
-            max_steps=10,
-        )
+        import re
 
-        if result["success"] and result["result"]:
-            # Try to extract a number from the result
-            import re
-            numbers = re.findall(r'[\d,]+', str(result["result"]))
-            if numbers:
-                try:
-                    return int(numbers[0].replace(",", ""))
-                except ValueError:
-                    pass
+        for attempt in range(retries):
+            prompt = (
+                "You are on focalml.com. Find the credit balance number. "
+                "It is displayed in the TOP-RIGHT area of the header bar, "
+                "shown as a number (like '15247') next to a small icon, "
+                "to the left of the word 'Support'. "
+                "Look at the HEADER BAR at the top of the page, NOT the sidebar. "
+            )
+            if attempt > 0:
+                # On retry, navigate home first for a clean page state
+                prompt = (
+                    "Navigate to https://focalml.com first, then look at the "
+                    "TOP-RIGHT of the page header. The credit balance is a "
+                    "number (like '15247') shown next to a small icon, to the "
+                    "left of the word 'Support'. Read that number carefully. "
+                )
+            prompt += "Return ONLY the number."
 
-        logger.warning("Could not read credit balance")
+            result = await self.run_task(prompt, max_steps=10)
+
+            if result["success"] and result["result"]:
+                numbers = re.findall(r'[\d,]+', str(result["result"]))
+                if numbers:
+                    try:
+                        value = int(numbers[0].replace(",", ""))
+                        if value > 0:
+                            return value
+                        # Got 0 — might be real or might be a misread.
+                        # Retry to be sure.
+                        if attempt < retries - 1:
+                            logger.warning(
+                                f"Credit balance read as 0 (attempt {attempt + 1}) "
+                                f"— retrying with navigation"
+                            )
+                            continue
+                        # All retries returned 0 — it's probably real
+                        return 0
+                    except ValueError:
+                        pass
+
+        logger.warning("Could not read credit balance after %d attempts", retries)
         return None
 
     async def download_video(self, filename: str = None) -> Path | None:
