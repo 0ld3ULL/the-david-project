@@ -1,52 +1,60 @@
 """
 Claude Memory Database — SQLite with significance-based decay.
 
-Adapted from David Flip's EventStore (core/memory/event_store.py).
-Same DECAY_RATES, same recall boost mechanic, but different categories
-suited for project development memory rather than world events.
+Memories are scored 1-10 for significance and decay at different rates:
+- sig 10: Never fades (foundational — project mission, safety rules)
+- sig 7-9: Very slow decay (architecture, key decisions)
+- sig 4-6: Medium decay (session outcomes, research)
+- sig 1-3: Fast decay (routine debugging, one-off questions)
 
 Categories:
     decision     — "We chose X because Y" (decays based on significance)
-    current_state — "Oprah is built but not wired" (no decay, manually updated)
-    knowledge    — "FLIPT has 3 parts" (no decay, permanent facts)
-    session      — "Feb 9: built transcript scraper" (decays normally)
-    recovered    — Items recovered by git reconciliation (baseline sig 5)
+    current_state — "Feature X is built but not deployed" (no decay, manually updated)
+    knowledge    — "The project uses React + Express" (no decay, permanent facts)
+    session      — "Feb 9: built the scraper" (decays normally)
+
+Database location: ~/.claude-memory/memory.db (shared across all projects)
 """
 
 import json
 import sqlite3
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path("data/claude_memory.db")
+# Global database — shared across all projects on this machine
+DB_DIR = Path.home() / ".claude-memory"
+DB_PATH = DB_DIR / "memory.db"
 
-# Decay rates per week — identical to David's EventStore
+# Decay rates per week — how much recall_strength drops each week
 DECAY_RATES = {
-    10: 0.00,   # Never fades — foundational (missions, philosophy, safety rules)
-    9:  0.01,   # Almost never — architecture decisions, agent roster
-    8:  0.02,   # Very slow — major system components, API keys
-    7:  0.05,   # Slow — implementation details that matter
-    6:  0.08,   # Medium-slow — session decisions affecting ongoing work
-    5:  0.10,   # Medium — general session outcomes, research findings
-    4:  0.15,   # Medium-fast — routine debugging, temporary workarounds
-    3:  0.20,   # Fast — casual discussions
-    2:  0.30,   # Very fast — one-off questions
-    1:  0.50,   # Gone in 2 weeks — noise
+    10: 0.00,   # Never fades — foundational
+    9:  0.01,   # Almost never
+    8:  0.02,   # Very slow
+    7:  0.05,   # Slow
+    6:  0.08,   # Medium-slow
+    5:  0.10,   # Medium
+    4:  0.15,   # Medium-fast
+    3:  0.20,   # Fast
+    2:  0.30,   # Very fast
+    1:  0.50,   # Gone in 2 weeks
 }
 
 # Categories that never decay
 NO_DECAY_CATEGORIES = {"current_state", "knowledge"}
 
-# Recall boost when a memory is accessed
+# Recall boost when a memory is accessed (searched/read)
 RECALL_BOOST = 0.15
 
 # Prune threshold — below this, memory can be deleted
 PRUNE_THRESHOLD = 0.05
+
+# How many full sessions to keep (oldest auto-deleted when new one saved)
+MAX_SESSIONS = 10
 
 
 @dataclass
@@ -59,7 +67,7 @@ class Memory:
     significance: int       # 1-10
     recall_strength: float  # 0.0-1.0
     tags: list[str]
-    source: str             # 'session', 'git_reconciliation', 'manual', 'seed'
+    source: str             # 'session', 'manual', 'auto'
     recalled_count: int
     last_recalled: Optional[str]
     created_at: str
@@ -81,15 +89,15 @@ class ClaudeMemoryDB:
     Persistent memory database for Claude Code sessions.
 
     Features:
-    - Significance-based decay (matching David's EventStore)
+    - Significance-based decay (important stuff persists, noise fades)
     - FTS5 full-text search
     - Category-based organization
-    - Recall boost on access
+    - Recall boost on access (memories get stronger when used)
     - Export for brief generation
     """
 
-    def __init__(self, db_path: Path = DB_PATH):
-        self.db_path = db_path
+    def __init__(self, db_path: Path = None):
+        self.db_path = db_path or DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
@@ -152,11 +160,22 @@ class ClaudeMemoryDB:
             END
         """)
 
-        # Track when decay was last applied
+        # Track metadata (last decay time, etc.)
         c.execute("""
             CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
                 value TEXT
+            )
+        """)
+
+        # Session transcripts — auto-captured at end of each session
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                summary TEXT NOT NULL,
+                project TEXT DEFAULT '',
+                files_changed TEXT DEFAULT '[]',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -176,7 +195,7 @@ class ClaudeMemoryDB:
         tags: list[str] = None,
         source: str = "manual",
     ) -> int:
-        """Add a new memory."""
+        """Add a new memory. Returns the memory ID."""
         significance = max(1, min(10, significance))
         now = datetime.now().isoformat()
 
@@ -243,9 +262,7 @@ class ClaudeMemoryDB:
     # ------------------------------------------------------------------
 
     def recall(self, query: str, min_strength: float = 0.3, limit: int = 10) -> list[Memory]:
-        """
-        Search memories by query. Boosts recall strength on match.
-        """
+        """Search memories by query. Boosts recall strength on match."""
         conn = self._get_conn()
         c = conn.cursor()
 
@@ -298,6 +315,61 @@ class ClaudeMemoryDB:
         conn.close()
 
     # ------------------------------------------------------------------
+    # Session Capture (last N sessions auto-saved)
+    # ------------------------------------------------------------------
+
+    def save_session(self, summary: str, project: str = "", files_changed: list[str] = None) -> int:
+        """
+        Save a session summary. Called at end of each Claude Code session.
+        Keeps the last MAX_SESSIONS entries, auto-prunes older ones.
+        """
+        now = datetime.now().isoformat()
+        conn = self._get_conn()
+        c = conn.cursor()
+
+        c.execute("""
+            INSERT INTO sessions (summary, project, files_changed, created_at)
+            VALUES (?, ?, ?, ?)
+        """, (summary, project, json.dumps(files_changed or []), now))
+
+        session_id = c.lastrowid
+
+        # Auto-prune: keep only last MAX_SESSIONS
+        c.execute("""
+            DELETE FROM sessions WHERE id NOT IN (
+                SELECT id FROM sessions ORDER BY id DESC LIMIT ?
+            )
+        """, (MAX_SESSIONS,))
+
+        conn.commit()
+        conn.close()
+
+        logger.info(f"Session #{session_id} saved: {summary[:80]}...")
+        return session_id
+
+    def get_sessions(self, limit: int = MAX_SESSIONS) -> list[dict]:
+        """Get recent sessions, newest first."""
+        conn = self._get_conn()
+        c = conn.cursor()
+
+        c.execute("""
+            SELECT * FROM sessions ORDER BY id DESC LIMIT ?
+        """, (limit,))
+
+        sessions = []
+        for row in c.fetchall():
+            sessions.append({
+                "id": row["id"],
+                "summary": row["summary"],
+                "project": row["project"],
+                "files_changed": json.loads(row["files_changed"]) if row["files_changed"] else [],
+                "created_at": row["created_at"],
+            })
+
+        conn.close()
+        return sessions
+
+    # ------------------------------------------------------------------
     # Decay / Prune
     # ------------------------------------------------------------------
 
@@ -313,7 +385,6 @@ class ClaudeMemoryDB:
             if decay_rate == 0:
                 continue
 
-            # Build category exclusion
             placeholders = ",".join("?" for _ in NO_DECAY_CATEGORIES)
             c.execute(f"""
                 UPDATE memories
@@ -367,7 +438,7 @@ class ClaudeMemoryDB:
         return len(to_prune)
 
     # ------------------------------------------------------------------
-    # Export (for brief generation and reconciliation)
+    # Export (for brief generation)
     # ------------------------------------------------------------------
 
     def export_all(self, min_strength: float = 0.0) -> list[Memory]:
@@ -400,15 +471,14 @@ class ClaudeMemoryDB:
         conn.close()
         return memories
 
-    def export_for_reconciliation(self) -> str:
-        """Export all memories as text for Gemini reconciliation."""
+    def export_text(self) -> str:
+        """Export all memories as readable text."""
         memories = self.export_all(min_strength=0.0)
 
-        lines = ["# Claude Memory Database Export", ""]
+        lines = ["# Claude Memory Export", ""]
         for mem in memories:
-            state = mem.state
             lines.append(f"## [{mem.category}] {mem.title} (sig={mem.significance}, "
-                         f"strength={mem.recall_strength:.2f}, state={state})")
+                         f"strength={mem.recall_strength:.2f}, state={mem.state})")
             lines.append(mem.content)
             if mem.tags:
                 lines.append(f"Tags: {', '.join(mem.tags)}")
@@ -446,10 +516,6 @@ class ClaudeMemoryDB:
         row = c.fetchone()
         last_decay = row["value"] if row else "never"
 
-        c.execute("SELECT value FROM meta WHERE key = 'last_reconciliation'")
-        row = c.fetchone()
-        last_reconciliation = row["value"] if row else "never"
-
         conn.close()
 
         return {
@@ -460,7 +526,6 @@ class ClaudeMemoryDB:
             "by_category": by_category,
             "avg_recall_strength": round(avg_strength, 2),
             "last_decay": last_decay,
-            "last_reconciliation": last_reconciliation,
         }
 
     def get_last_meta(self, key: str) -> Optional[str]:

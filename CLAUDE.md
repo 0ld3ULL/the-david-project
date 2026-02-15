@@ -4,7 +4,16 @@
 
 **FIRST THING EVERY SESSION:**
 1. Read `claude_brief.md` — persistent memory with significance scores
-2. Read `session_log.md` — detailed state from the last session (what was being worked on, next steps, uncommitted changes)
+2. Read `session_log.md` — auto-saved session history with timestamps (most recent first)
+3. **Check recent short sessions** — Run this command to find sessions from the last 2 hours:
+   ```bash
+   ls -lt ~/.claude/projects/C--Projects-Clawdbot/*.jsonl | head -5
+   ```
+   If any of the last 2-3 sessions are **under 500KB** (short sessions), read the user messages from them:
+   ```bash
+   jq -r 'select(.type=="user") | "[" + (.timestamp // "") + "] " + ((.message.content // .message) | if type=="array" then map(select(.type=="text") | .text) | join(" ") elif type=="string" then . else "" end)' ~/.claude/projects/C--Projects-Clawdbot/SESSION_ID.jsonl 2>/dev/null | grep -v '^\[.*\] $' | grep -v '^\[.*\] \[' | grep -v '^\[.*\] {' | head -30
+   ```
+   **WHY:** Short sessions often contain quick fixes or troubleshooting that didn't get saved to memory. Reading them prevents redoing work that was already done. The context cost is tiny compared to repeating an hour of work.
 
 If `claude_brief.md` seems stale or empty, run:
 ```
