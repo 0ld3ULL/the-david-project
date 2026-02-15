@@ -645,8 +645,15 @@ class OccyLearner:
             f"Feature: {feature['description']}. "
         )
 
+        # Cost constraint applied to ALL generation prompts
+        cost_warning = (
+            "IMPORTANT: Use the SMALLEST/CHEAPEST settings. "
+            "Shortest duration, lowest resolution, single output only. "
+        )
+
         if category == "video_models":
             gen_prompt += (
+                f"{cost_warning}"
                 f"Create a SHORT test video (5-10 seconds) using this model. "
                 f"Steps:\n"
                 f"1. Make sure you're in a project (create one if needed)\n"
@@ -659,6 +666,7 @@ class OccyLearner:
             )
         elif category == "image_models":
             gen_prompt += (
+                f"{cost_warning}"
                 f"Generate a single test image using this model. "
                 f"Steps:\n"
                 f"1. Make sure you're in a project (create one if needed)\n"
@@ -669,6 +677,7 @@ class OccyLearner:
             )
         elif category == "voice_tts":
             gen_prompt += (
+                f"{cost_warning}"
                 f"Generate a short voice clip using this model. "
                 f"Steps:\n"
                 f"1. Make sure you're in a project\n"
@@ -679,9 +688,12 @@ class OccyLearner:
             )
         else:
             gen_prompt += (
-                f"Test this feature by creating a minimal output. "
+                f"{cost_warning}"
+                f"Test this feature by creating a MINIMAL output. "
+                f"Use the shortest duration, lowest resolution, single output only. "
                 f"Use prompt: \"{test_prompt}\". "
-                f"Click Generate/Create and wait for the result."
+                f"Click Generate/Create and wait for the result. "
+                f"Do NOT create a full project — just a single minimal test generation."
             )
 
         start_time = datetime.now()
@@ -703,6 +715,14 @@ class OccyLearner:
         credits_spent = 0
         if credits_after is not None and credits_before is not None:
             credits_spent = max(0, credits_before - credits_after)
+
+        # Check for overspend against per-test budget
+        overspent = credits_spent > credit_budget
+        if overspent:
+            logger.warning(
+                f"OVERSPEND: {feature_name} used {credits_spent} credits "
+                f"(budget was {credit_budget}) — flagging for session stop"
+            )
 
         # Step 5: Screenshot and quality review
         screenshot_path = await self.browser.take_screenshot(f"hands_on_{feature_name}")
@@ -780,6 +800,7 @@ class OccyLearner:
             "generation_time_seconds": round(generation_time, 1),
             "quality_notes": quality_notes,
             "confidence_delta": confidence_delta,
+            "overspent": overspent,
         }
 
     async def run_hands_on_session(
@@ -812,6 +833,8 @@ class OccyLearner:
         tested_features = []
         session_attempted = set()
         browser_restarts = 0
+
+        consecutive_failures = 0
 
         logger.info(
             f"Starting {duration_minutes}-minute hands-on session "
@@ -869,6 +892,32 @@ class OccyLearner:
                 "generation_time": result.get("generation_time_seconds", 0),
                 "confidence_delta": result.get("confidence_delta", 0),
             })
+
+            # Fix 5: Overspend flag stops session immediately
+            if result.get("overspent"):
+                logger.warning(
+                    f"Feature {feature['name']} overspent — stopping session "
+                    f"to prevent further damage"
+                )
+                break
+
+            # Fix 4: Consecutive failure circuit breaker
+            if not result["success"]:
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    logger.warning("3 consecutive failures — ending session early")
+                    break
+            else:
+                consecutive_failures = 0
+
+            # Fix 2: Verify actual credit balance between tests
+            actual_balance = await self.browser.get_credit_balance()
+            if actual_balance is not None and actual_balance < CREDIT_SAFETY_FLOOR:
+                logger.warning(
+                    f"Actual credit balance {actual_balance} below safety floor "
+                    f"{CREDIT_SAFETY_FLOOR} — ending session"
+                )
+                break
 
             # If browser died, try restart
             if not self.browser.is_connected:
