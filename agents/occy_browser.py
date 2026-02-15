@@ -464,12 +464,17 @@ class FocalBrowser:
     async def _run_agent(self, task: str, llm, max_steps: int) -> dict:
         """Run a single browser-use agent attempt with the given LLM."""
         from browser_use import Agent
+        import glob as _glob
+
+        # Allow uploading files from data/ directory
+        upload_files = _glob.glob(str(Path("data") / "*.*"))
 
         agent = Agent(
             task=task,
             llm=llm,
             browser=self.browser,
             max_actions_per_step=5,
+            available_file_paths=upload_files,
         )
 
         history = await agent.run(max_steps=max_steps)

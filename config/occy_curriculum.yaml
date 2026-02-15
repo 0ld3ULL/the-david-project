@@ -214,6 +214,14 @@ categories:
   voice_tts:
     description: "Voice models and character voice assignment"
     features:
+      - name: install_david_voice
+        description: "Install David Flip's ElevenLabs voice 'Matt - The Young Professor' into Focal ML. Find where to add custom ElevenLabs voices in the Characters or Settings panel. The voice is already created on ElevenLabs — search for 'Matt' or look for an ElevenLabs integration/import option. Assign it to the main character so David videos use his signature voice."
+        confidence: 0.0
+        priority: 0
+        generative: true
+        test_prompt: "Hello, I'm David Flip. Welcome to FLIPT."
+        notes: "PRIORITY TASK from Jono. David's voice is 'Matt - The Young Professor' on ElevenLabs. Find how to connect it to Focal ML."
+
       - name: elevenlabs_v3
         description: "Eleven Labs V3 — primary TTS voice model (Settings > Voice Model)"
         confidence: 0.0
